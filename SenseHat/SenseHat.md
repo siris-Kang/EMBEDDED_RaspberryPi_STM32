@@ -21,7 +21,7 @@ IMU 센서를 이용하여 LED Pixel을 기울기에 따라 이동시키기
 LED 픽셀은 벽을 통과할 수 없음
 기울여도 벽 방향일 경우 이동 불가
 
-![move](./image_map1.png)
+![move](./images/image_map1.png)
 
 
 ---
@@ -42,7 +42,7 @@ LED 픽셀은 벽을 통과할 수 없음
 - 경로의 순서(1번 → 2번 → 3번 …)는 바뀌어도 상관 없음
 - N번째 경로까지 출력 후 버튼을 다시 누르면 다시 1번 경로부터 반복 출력  
 
-![map](./image_map2.png)
+![map](./images/image_map2.png)
 
 
 ---
@@ -54,4 +54,4 @@ LED 픽셀은 벽을 통과할 수 없음
 - 현재 위치 → 도착지점까지의 **최단 경로(BFS)**를 센스햇에 시각화  
 - 벽은 기존과 동일하게 통과 불가
 
-![map](./image_map3.png)
+![map](./images/image_map3.png)
