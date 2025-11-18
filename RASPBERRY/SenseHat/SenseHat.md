@@ -2,11 +2,11 @@
 
 
 ### [라즈베리파이 세부 사양]
-Raspberry Pi 5 Model B (8GB RAM)
-보드명: Raspberry Pi 5 Model B (8GB RAM)
-칩셋: BCM2712 (Broadcom社)
-CPU: 2.4GHz ARM Cortex-A76 쿼드코어
-통신: Wi-Fi / BLE, Bluetooth 5.0 / Ethernet 등
+Raspberry Pi 5 Model B (8GB RAM)  
+보드명: Raspberry Pi 5 Model B (8GB RAM)  
+칩셋: BCM2712 (Broadcom社)  
+CPU: 2.4GHz ARM Cortex-A76 쿼드코어  
+통신: Wi-Fi / BLE, Bluetooth 5.0 / Ethernet 등  
 
 
 ### [Test 1]
