@@ -45,3 +45,35 @@ LED는 계속 깜빡인다.
 
 
 ![test3_2](./images/image_test3_2.jpg)
+
+
+### UART 설정
+USART vs UART
+
+- USART : Sync(동기) 통신
+    - Clock PIN 을 하나 더 사용하여, Clock을 기준으로 Sync(박자)를 맞춘다.  
+    - PIN 3개 사용 (TX, RX, CK)  
+- UART : Async(비동기) 통신  
+    - Clock PIN 없이, Start / End bit를 추가적으로 사용하여 통신  
+    - PIN 2개 사용 (TX, RX)  
+
+- 설정  
+Categories → Connectivity → USART2  
+Asynchronous로 체크  
+
+<br>
+
+**printf/scanf**  
+main 위에 붙여넣기
+```
+int _read(int file, char *ptr, int len){
+	HAL_UART_Receive(&huart2, (uint8_t*)ptr, 1, 0xFFFF);
+	HAL_UART_Transmit(&huart2, (uint8_t*)ptr, 1, 100);
+	return 1;
+}
+
+int _write(int file, char *ptr, int len){
+	HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, 100);
+	return len;
+}
+```

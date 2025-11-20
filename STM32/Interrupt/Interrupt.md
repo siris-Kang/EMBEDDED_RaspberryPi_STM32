@@ -23,7 +23,7 @@ Bread board에 버튼 2개와 LED 2개를 연결
 2) 버튼1 < 버튼2  
 3) 버튼1 == 버튼2  
 
-<img src="./images/image_test1_ioc.png" height="500">
+<img src="./images/image_test1_ioc.png" height="400">
 
 <p align="left">
   <img src="./images/image_test1_1.jpg" height="300">
@@ -31,11 +31,28 @@ Bread board에 버튼 2개와 LED 2개를 연결
 </p>
 
 
+
 ## [Test 2]
-STM32 Nucleo Board PWM Example  
+타이머 LED   
 
-Delay 함수를 이용하여 LED의 밝기를 조절하기
-- 힌트:
-    - 50ms 껐다가, 50ms 켰다를 빠르게 반복하면 LED가 어두워진다.
-    - 70ms 껐다가, 30ms 켰다를 빠르게 반복하면 LED가 더 어두어진다.
+LED 3개를 Bread board 에 연결  
 
+- LED1 : 0.5s 에 한번 blink
+- LED2 : 0.3s 에 한번 blink
+- LED3 : 0.7s 에 한번 blink
+
+<br> 
+
+STM32 보드의 기본 시스템 클럭(System Clock)은 8 MHz  
+- Prescaler: 8000 - 1   
+타이머 입력 클럭 = 8 MHz / (7999 + 1) = 1 kHz  
+1ms마다 타이머가 1번씩 카운트가 증가  
+- Counter Period: 100 - 1  
+타이머가 100ms마다 1번씩 카운트를 증가하도록 Counter Period 조정  
+
+<img src="./images/image_test2_timerConfiguration.png" height="300">
+
+<br> 
+
+LED 1, 2, 3을  PC8, PC6, PC5에 연결  
+<img src="./images/image_test2_ioc.png" height="400">
