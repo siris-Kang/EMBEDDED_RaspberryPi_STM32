@@ -1,6 +1,6 @@
 # Interrupt
 
-## 1. 보드 정보
+## 보드 정보
 - **보드 이름**: Nucleo
 - **보드 모델명**: Nucleo-F103RB
 - **ST사의 CPU 칩셋 이름**: STM32F103RB
@@ -56,3 +56,21 @@ STM32 보드의 기본 시스템 클럭(System Clock)은 8 MHz
 
 LED 1, 2, 3을  PC8, PC6, PC5에 연결  
 <img src="./images/image_test2_ioc.png" height="400">
+
+
+## [Test 3]
+
+MPU6050, I2C 통신
+
+### 칩 정보
+- **모듈 보드 명**: GY-521
+- **IC 이름**: MPU6050
+- **특징**: Gyroscope: 3축 측정 가능 -> 각(Angle) 속도를 알 수 있음  
+          : Accelerometer: 3축 측정 가능 -> 기울기 감지
+
+<br>
+
+각 값을 읽어오기 위해서는 주소를 알아야한다.  
+#define ACCEL_XOUT_H 0x3B  
+#define GYRO_XOUT_H 0x43  
+#define WHO_AM_I 0x75  
