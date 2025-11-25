@@ -14,7 +14,7 @@
 앞바퀴  
 <img src="./images/image_car2.jpg" width="400">  
 <br>
-Raspberry 보드 위에 motorHAT 연결
+Raspberry 보드 위에 motorHAT 연결  
 <img src="./images/image_car3.jpg" width="400">  
 
 ## Codes
