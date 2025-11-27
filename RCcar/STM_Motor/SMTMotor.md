@@ -1,4 +1,6 @@
-# STM 보드로 모터 구동하기
+# ST보드로 모터 구동하기
+칩: NUCLEO-F103RB  
+모터드라이버: L298N
 
 
 ## 1. Usart Test
@@ -22,7 +24,7 @@ NUCLEO-F103RB의 PIN PC5, PC6, PC8 이용
 - L298N GND - 전원 GND
 - L298N GND - NUCLEO GND
 
-<img src="./images/image_L298N.jpg"> 
+<img src="./images/image_L298N.jpg" height="400"> 
 
 
 ### L298N
@@ -57,4 +59,8 @@ Period: 20000-1 -> 1MHz 기준 20000us = 20ms
 - 75 = MIDDLE
 - 150 = RIGHT
 
-<img src="./images/image_servo.jpg"> 
+<img src="./images/image_servo.jpg" height="400"> 
+
+
+## ioc
+<img src="./images/image_ioc.png" height="500"> 
