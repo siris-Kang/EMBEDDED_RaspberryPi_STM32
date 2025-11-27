@@ -43,9 +43,11 @@ int main(void)
 
     // 2) 수신 데이터가 있으면 1바이트 읽어서 다시 에코
     uint8_t ch;
+    uint8_t buf[2];
     if (HAL_UART_Receive(&huart2, &ch, 1, 10) == HAL_OK) {
-      // 받은 글자를 다시 전송 (에코)
-      HAL_UART_Transmit(&huart2, &ch, 1, 10);
+      buf[0] = ch;
+      buf[1] = '\n';  // 개행 추가
+      HAL_UART_Transmit(&huart2, buf, 2, 10);
     }
 
     // 너무 바쁘게 돌지 않게 약간 쉼
