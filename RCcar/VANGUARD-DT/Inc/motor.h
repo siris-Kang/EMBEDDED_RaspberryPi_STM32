@@ -11,13 +11,13 @@
 #include "main.h"
 
 typedef enum {
-  MOTOR_DIR_STOP = 0,
-  MOTOR_DIR_FORWARD,
-  MOTOR_DIR_BACKWARD
+  MOTOR_STOP = 0,
+  MOTOR_FORWARD,
+  MOTOR_BACKWARD
 } MotorDir_t;
 
 void Motor_Init(void);
 void Motor_SetDirection(MotorDir_t dir);
-
+void Motor_SetSpeed(uint8_t duty);
 
 #endif /* INC_MOTOR_H_ */
