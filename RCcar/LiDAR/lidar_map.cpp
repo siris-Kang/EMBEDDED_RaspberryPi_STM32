@@ -93,41 +93,43 @@ inline bool worldToGrid(float x, float y, const OccupancyGrid& og, int& gx, int&
 
 /// 3. 한 스캔을 그리드에 반영 (매우 단순: 끝점만 occupied로 표시)
 void addScanToGrid(const Scan& scan, OccupancyGrid& og) {
-    const float max_range_m = 2.0f; // 2m까지만 사용 (원하면 조절)
+    const float max_range_m = 2.0f;      // 맵에 그리고 싶은 최대 거리
+    const float sensor_max_m = 6.0f;     // 실제 센서 최대 거리 (예시)
 
     for (const auto& p : scan.points) {
         float dist_m = p.dist_mm / 1000.0f;
-        if (dist_m <= 0.0f || dist_m > max_range_m) continue;
+        if (dist_m <= 0.0f || dist_m > sensor_max_m) continue;
 
+        float use_dist = std::min(dist_m, max_range_m);  // 2m 넘어가면 2m로 자름
         float rad = p.angle_deg * static_cast<float>(M_PI) / 180.0f;
 
-        // 레이 따라 몇 칸을 찍을지
-        int steps = static_cast<int>(dist_m / og.res_m);
+        int steps = static_cast<int>(use_dist / og.res_m);
         if (steps < 1) steps = 1;
 
-        // 1) 로봇(0,0) → hit 지점까지 free 셀 채우기
+        // free 채우기
         for (int i = 0; i < steps; ++i) {
-            float r = i * og.res_m;      // 0, res, 2*res, ...
+            float r = i * og.res_m;
             float x = r * std::cos(rad);
             float y = r * std::sin(rad);
 
             int gx, gy;
             if (worldToGrid(x, y, og, gx, gy)) {
                 int idx = gy * og.width + gx;
-                if (og.data[idx] == -1) {    // 아직 미방문이면 free 로
-                    og.data[idx] = 0;        // free
-                }
+                if (og.data[idx] == -1)
+                    og.data[idx] = 0; // free
             }
         }
 
-        // 2) 끝점은 occupied 로 표시
-        float x_hit = dist_m * std::cos(rad);
-        float y_hit = dist_m * std::sin(rad);
-
-        int gx, gy;
-        if (worldToGrid(x_hit, y_hit, og, gx, gy)) {
-            int idx = gy * og.width + gx;
-            og.data[idx] = 100;   // 장애물
+        // 장애물 찍을지 말지는 선택사항:
+        // dist_m <= max_range_m 일 때만 찍기
+        if (dist_m <= max_range_m) {
+            float x_hit = dist_m * std::cos(rad);
+            float y_hit = dist_m * std::sin(rad);
+            int gx, gy;
+            if (worldToGrid(x_hit, y_hit, og, gx, gy)) {
+                int idx = gy * og.width + gx;
+                og.data[idx] = 100;
+            }
         }
     }
 }
