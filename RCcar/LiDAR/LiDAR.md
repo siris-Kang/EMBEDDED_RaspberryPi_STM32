@@ -24,13 +24,20 @@ g++ lidar_map.cpp -o lidar_map `pkg-config --cflags --libs opencv4`
 
 ### C++ build
 ```
-g++ lidar_slam.cpp -o lidar_slam `pkg-config --cflags --libs opencv4`
+g++ -std=c++17 main.cpp slam.cpp -o slam_demo `pkg-config --cflags --libs opencv4`
 ```
 
 ### 실행
 ```
-./lidar_slam test.txt 
+./lidar_slam test.txt
 ```
 
 ### 생성된 이미지 확인
+<img src="./images/image_slam.png" width="500">  
 <img src="./images/map_global.png" width="200">  
+
+현재는 한번의 라이더 output txt파일만을 이용하고 있기에 pos값과 이동 방향에 변화가 거의 없음을 확인할 수 있다.  
+
+
+<br>
+
