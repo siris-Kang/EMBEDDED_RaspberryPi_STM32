@@ -42,48 +42,32 @@ void Uart_Print(const char *fmt, ...)
     }
 }
 
-// 마지막 명령 시간 (원래 있던 전역이라고 가정)
 extern uint32_t last_cmd_tick;
 
 void Uart_App_Task(void)
 {
     uint8_t ch;
-    static uint16_t speed_buf = 0;   // 현재까지 입력된 속도 (0~100)
-    static uint8_t  speed_len = 0;   // 몇 자리 입력했는지
 
-    // 1바이트 수신 (없으면 그냥 리턴)
+    // 수신
     if (HAL_UART_Receive(&huart2, &ch, 1, 10) != HAL_OK) {
         return;
     }
 
-    // 1) 숫자면: 속도 누적
+    // Level 속도
     if (ch >= '0' && ch <= '9')
     {
-        if (speed_len < 3) {   // 최대 세 자리만 허용
-            speed_buf = speed_buf * 10 + (ch - '0');
-            if (speed_buf > 100)
-                speed_buf = 100;
-            speed_len++;
+        uint8_t level = (uint8_t)(ch - '0');
 
-            uint8_t duty = (uint8_t)speed_buf;
-            Motor_SetSpeed(duty);
+        Motor_SetSpeed(level);
 
-            Uart_Print("\r\n[UART] speed_buf=%u, duty=%u%%\r\n", speed_buf, duty);
-            last_cmd_tick = HAL_GetTick();
-        }
-        return;   // 숫자인 경우, 여기서 끝
+        Uart_Print("\r\n[UART] level=%u\r\n", level);
+        last_cmd_tick = HAL_GetTick();
+        return;
     }
-
-    // 2) 숫자가 아닌 문자가 들어오면, 속도 입력은 끝난 걸로 보고 버퍼 초기화
-    speed_buf = 0;
-    speed_len = 0;
-
-    // 개행 문자는 그냥 무시
     if (ch == '\r' || ch == '\n') {
         return;
     }
 
-    // 3) 문자 명령 처리
     switch (ch)
     {
     case 'w':
@@ -122,7 +106,7 @@ void Uart_App_Task(void)
         last_cmd_tick = HAL_GetTick();
         break;
 
-    case 'h':  // 핸드셰이크 테스트용
+    case 'h':
         Uart_Print("\r\n[MCU] HELLO FROM STM32\r\n");
         break;
 
@@ -131,3 +115,4 @@ void Uart_App_Task(void)
         break;
     }
 }
+
