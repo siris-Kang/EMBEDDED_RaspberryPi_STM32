@@ -41,11 +41,11 @@ TIM3 CH1(PWM)을 사용한다.
 
 ### Servo_SetAngle
 - 입력: `uint8_t angle` (0 ~ 180도)
-- 0~180도를 1ms-2ms 펄스로 매핑:
+- 0-180도를 1ms-2ms 펄스로 매핑:
 
 ### Servo_SetSteerPercent
 - 입력: `int8_t steer_percent` (-100 - 100)
-- -100 - 100 범위를 **각도(0° - 150°)**로 선형 매핑한다.
+- -100 - 100 범위를 각도(0° - 150°)로 선형 매핑한다.
 - 매핑:
   - `steer_percent = -100` → 약 0° (최좌측)
   - `steer_percent = 0`    → 75° (정중앙)
