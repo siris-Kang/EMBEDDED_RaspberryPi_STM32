@@ -24,12 +24,12 @@ g++ lidar_map.cpp -o lidar_map `pkg-config --cflags --libs opencv4`
 
 ### C++ build
 ```
-g++ -std=c++17 main.cpp slam.cpp -o slam_demo `pkg-config --cflags --libs opencv4`
+g++ -std=c++17 main.cpp slam.cpp -o slam `pkg-config --cflags --libs opencv4`
 ```
 
 ### 실행
 ```
-./lidar_slam test.txt
+./slam test.txt
 ```
 
 ### 생성된 이미지 확인
@@ -41,3 +41,4 @@ g++ -std=c++17 main.cpp slam.cpp -o slam_demo `pkg-config --cflags --libs opencv
 
 <br>
 
+static으로 선언하는것과 아닌거의 차이
