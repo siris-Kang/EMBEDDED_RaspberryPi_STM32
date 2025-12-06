@@ -20,12 +20,15 @@ TIM2 CH1(PWM) + PC6/PC8 방향 제어 핀을 사용한다.
 - 실제 PWM duty(0~100%)를 설정하는 내부 함수.
 
 ### Motor_SetSpeedPercent
-- 모터 속도를 퍼센트 단위(-100 ~ 100)로 설정한다.
-- 하드웨어 특성상 **63% 이하에서는 모터가 돌지 않으므로**,  
-  1~100%를 **63~100% 구간으로 선형 매핑**한다.
+- 모터 속도를 퍼센트 단위(-100 - 100)로 설정한다.
+- 하드웨어 특성상 63% 이하에서는 모터가 돌지 않으므로,  
+  1-100%를 63-100% 구간으로 선형 매핑한다.
 - 최종 duty는 `Motor_SetDuty()`를 통해 PWM에 반영된다.
 
----
+
+<br>
+<br>
+<br>
 
 ## Servo Motor
 조향(steering)을 담당하는 서보 모터를 제어한다.  
@@ -34,21 +37,24 @@ TIM3 CH1(PWM)을 사용한다.
 ### Servo_Init
 - TIM3 CH1 PWM을 시작한다.
 - 타이머 설정: 1us 해상도, Period = 19999 (20ms 주기)
-  - 1ms ~ 2ms 펄스 → 서보 0° ~ 180°
+  - 1ms - 2ms 펄스 → 서보 0° - 180°
 
 ### Servo_SetAngle
 - 입력: `uint8_t angle` (0 ~ 180도)
-- 0~180도를 1ms~2ms 펄스로 매핑:
+- 0~180도를 1ms-2ms 펄스로 매핑:
 
 ### Servo_SetSteerPercent
-- 입력: `int8_t steer_percent` (-100 ~ 100)
-- -100 ~ 100 범위를 **각도(0° ~ 150°)**로 선형 매핑한다.
+- 입력: `int8_t steer_percent` (-100 - 100)
+- -100 - 100 범위를 **각도(0° - 150°)**로 선형 매핑한다.
 - 매핑:
   - `steer_percent = -100` → 약 0° (최좌측)
   - `steer_percent = 0`    → 75° (정중앙)
   - `steer_percent = 100`  → 약 150° (최우측)
 
----
+
+<br>
+<br>
+<br>
 
 ## UART
 USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신을 구현했다.  
@@ -105,22 +111,24 @@ USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신
 - STM32에서 계산한 값과 수신된 checksum이 다르면,
   해당 패킷은 잘못된 데이터로 판단하고 무시한다.
 
----
+<br>
+<br>
 
-### Uart_App_Init
+### 코드 설명
+#### Uart_App_Init
 - 모터/서보 초기 상태 설정:
   - `Motor_SetDirection(MOTOR_STOP);`  
   - `Servo_SetAngle(75);` (센터)
 
-### Uart_ParseByte (static)
+#### Uart_ParseByte (static)
 - 1바이트씩 들어오는 UART 데이터를 받아 패킷 단위로 조립한다.
 
-### Uart_App_Task
+#### Uart_App_Task
 - 메인 루프에서 반복 호출되는 UART 수신 처리 함수.
 - `HAL_UART_Receive(&huart2, &ch, 1, 10)` 으로 1바이트 수신 시도.
   - 성공하면 `Uart_ParseByte(ch)` 호출로 패킷 파싱.
 
-### Control_Task
+#### Control_Task
 - 메인 루프에서 반복 호출되는 제어 로직.
 - DC 모터/서보에 실제 명령을 적용하고, 필요 시 로그를 출력한다.
 
