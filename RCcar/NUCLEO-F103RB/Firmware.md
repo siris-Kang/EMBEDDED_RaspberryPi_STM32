@@ -1,4 +1,10 @@
 # NUCLEO-F103RB
+[gpio핀 연결 상세 보기](../../RCcar/STM_Motor/ST_Motor.md)
+
+<img src="./images/schematic.png" height="300">
+<img src="./images/pinout.png" height="300">
+
+<br>
 
 ## DC Motor
 모터 드라이버와 연결된 DC 모터를 구동한다.  
@@ -7,7 +13,6 @@ TIM2 CH1(PWM) + PC6/PC8 방향 제어 핀을 사용한다.
 ### Motor_Init
 - PC6, PC8와 연결된 모터의 방향 핀을 초기화한다.  
 - TIM2 CH1 PWM을 시작한다.
-- 참고: [Motor gpio핀 연결](../../RCcar/STM_Motor/ST_Motor.md)
 
 ### Motor_SetDirection
 모터의 회전 방향을 제어한다.

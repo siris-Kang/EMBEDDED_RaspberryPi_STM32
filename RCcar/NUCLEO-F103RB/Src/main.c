@@ -22,6 +22,7 @@
 #include "usart.h"
 #include "gpio.h"
 #include "uart_app.h"
+#include "motor.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -94,21 +95,24 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+  Motor_Init();
+  Servo_Init();
+  Uart_App_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      // 1) LED 토글 (보드가 실제로 돌고 있는지 확인용)
+      // LED: 보드가 실제로 돌고 있는지 확인
       static uint32_t last = 0;
       uint32_t now = HAL_GetTick();
       if (now - last > 500) {
-	  last = now;
-	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);  // 보드 LED
+        last = now;
+        HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);  // 보드 LED
       }
 
-      // 2) UART
+      // UART
       Uart_App_Task();
       Control_Task();
 

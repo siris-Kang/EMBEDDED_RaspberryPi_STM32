@@ -52,11 +52,11 @@ void Uart_App_Init(void)
     HAL_UART_Transmit(&huart2, (uint8_t*)start_msg, strlen(start_msg), 100);
 
     Motor_SetDirection(MOTOR_STOP);
-    Servo_SetAngle(75);   // 가운데
+    Servo_SetAngle(75);
 
     g_cmd.speed = 0;
     g_cmd.steer = 0;
-    g_cmd.flags = 0;      // enable=0
+    g_cmd.flags = 0;
     g_cmd.seq   = 0;
 
     last_cmd_tick = HAL_GetTick();
@@ -97,15 +97,13 @@ static void Uart_ParseByte(uint8_t byte)
         return;
     }
 
-    // 나머지 바이트 저장
     buf[idx++] = byte;
 
-    // 아직 7바이트 안 모이면 리턴
     if (idx < 7) {
         return;
     }
 
-    // buf[0..6] 완성 → 체크섬 검사
+    // 체크섬 검사
     uint8_t checksum = 0;
     for (int i = 0; i < 6; i++) {
         checksum += buf[i];
@@ -128,7 +126,7 @@ static void Uart_ParseByte(uint8_t byte)
         Uart_Print("[PKT ERR] checksum mismatch: got=%02X\r\n", buf[6]);
     }
 
-    idx = 0;   // 다음 패킷 준비
+    idx = 0;
 }
 
 /*-------------------- UART 수신 태스크 --------------------*/
@@ -148,14 +146,6 @@ void Uart_App_Task(void)
 void Control_Task(void)
 {
     static uint8_t last_logged_seq = 0xFF;
-    uint32_t now = HAL_GetTick();
-
-    // 500ms 동안 새 명령 없으면 자동 정지
-    if (now - last_cmd_tick > 500) {
-        Motor_SetSpeedPercent(0);   // 정지
-        Servo_SetSteerPercent(0);   // 직진
-        return;
-    }
 
     // enable 플래그 꺼져 있으면 정지 유지
     if ((g_cmd.flags & 0x01) == 0) {

@@ -133,12 +133,12 @@ namespace {
             ssize_t n = ::read(g_fd, buf, sizeof(buf));
 
             if (n > 0) {
-                std::cout.write(reinterpret_cast<char*>(buf), n);
-                std::cout.flush();
+                //std::cout.write(reinterpret_cast<char*>(buf), n);
+                //std::cout.flush();
 
                 if (log.is_open()) {
                     log.write(reinterpret_cast<char*>(buf), n);
-                    log.flush();
+                    //log.flush();
                 }
             } else if (n == 0) {
                 ::usleep(1000);
