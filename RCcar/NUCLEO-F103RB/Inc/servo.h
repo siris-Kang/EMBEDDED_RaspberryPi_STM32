@@ -12,5 +12,6 @@
 
 void Servo_Init(void);
 void Servo_SetAngle(uint8_t angle);   // 0~180도
+void Servo_SetSteerPercent(int8_t steer_percent);
 
 #endif /* INC_SERVO_H_ */

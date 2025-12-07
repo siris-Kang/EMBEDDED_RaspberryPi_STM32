@@ -9,8 +9,10 @@
 #include "servo.h"
 #include "tim.h"
 
-// TIM3_CH1, PA6에 PWM 설정
+#define SERVO_CENTER_ANGLE 75   // 센터 값
+#define SERVO_RANGE_ANGLE  75   // ±75도 → 0~150도
 
+// TIM3_CH1, PA6에 PWM 설정
 void Servo_Init(void)
 {
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -29,3 +31,22 @@ void Servo_SetAngle(uint8_t angle)
 
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse);
 }
+
+// steer_percent: -100 ~ 100 (좌/우 조향 퍼센트)
+void Servo_SetSteerPercent(int8_t steer_percent)
+{
+    // 범위 클램프
+    if (steer_percent > 100)  steer_percent = 100;
+    if (steer_percent < -100) steer_percent = -100;
+
+    // -100 → CENTER - RANGE  (0도 근처)
+    //  0   → CENTER          (75도)
+    // +100 → CENTER + RANGE  (150도 근처)
+    int16_t angle = SERVO_CENTER_ANGLE + (int16_t)((int32_t)steer_percent * SERVO_RANGE_ANGLE / 100);
+
+    if (angle < 0)   angle = 0;
+    if (angle > 180) angle = 180;
+
+    Servo_SetAngle((uint8_t)angle);
+}
+

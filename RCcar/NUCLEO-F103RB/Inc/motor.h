@@ -18,6 +18,6 @@ typedef enum {
 
 void Motor_Init(void);
 void Motor_SetDirection(MotorDir_t dir);
-void Motor_SetSpeed(uint8_t duty);
+void Motor_SetSpeedPercent(int8_t speed_percent);
 
 #endif /* INC_MOTOR_H_ */

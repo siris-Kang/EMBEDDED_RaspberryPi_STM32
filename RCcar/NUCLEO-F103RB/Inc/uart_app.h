@@ -12,6 +12,7 @@
 
 void Uart_App_Init(void);
 void Uart_App_Task(void);
+void Control_Task(void);
+void Uart_Print(const char *fmt, ...);
 
-
-#endif /* INC_UART_APP_H_ */
+#endif
