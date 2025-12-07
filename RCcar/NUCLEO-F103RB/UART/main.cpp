@@ -3,7 +3,7 @@
 
 int main()
 {
-    const std::string dev = "/dev/ttyACM9";
+    const std::string dev = "/dev/ttyACM0";
 
     if (!rc_car::open(dev, 115200)) {
         std::cerr << "시리얼 오픈 실패\n";

@@ -1,4 +1,4 @@
-# NUCLEO-F103RB Setting
+# NUCLEO-F103RB
 
 ## DC Motor
 모터 드라이버와 연결된 DC 모터를 구동한다.  
@@ -114,7 +114,7 @@ USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신
 <br>
 <br>
 
-### 코드 설명
+### STM 코드 설명
 #### Uart_App_Init
 - 모터/서보 초기 상태 설정:
   - `Motor_SetDirection(MOTOR_STOP);`  
@@ -162,16 +162,39 @@ USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신
 
 ---
 
-### Build (Raspberry Pi side)
-라즈베리파이에서 UART 테스트용 프로그램을 빌드한다.
+<br>
+<br>
+
+# Raspberry-pi
+라즈베리파이와 SMT보드의 통신을 위해,  
+라즈베리파이에서 UART 프로그램을 작성 후 빌드한다.  
 
 ```
-g++ -std=c++17 main.cpp rc_car_uart.cpp -o uart
+./UART/
+      ├─ main.cpp
+      ├─ uart.cpp
+      └─ uart.hpp
+```
+
+단, main.cpp의 `dev = "/dev/ttyACM0"` 의 시리얼 포트를 꼭 수정하도록 한다.  
+
+### Build
+```
+g++ -std=c++17 main.cpp uart.cpp -o uart
 ```
 
 ### 실행
 ```
 ./uart
 ```
+프로그램을 실행하면 라즈베리파이에서 STM32 보드로 패킷을 전송하고 받을 수 있다.  
+`Ex) 20 0 1`
+- speed (uint8_t)
+- steer (uint8_t)
+- flags (uint8_t, bit0: enable, bit1: emergency stop)  
+
+
+STM32 보드는 수신한 패킷을 그대로 재전송(echo)하여, 패킷이 정상적으로 전송·수신되고 있는지 확인할 수 있다.  
+
 logs/YYMMDD_HHMM.txt 형식의 파일로  
 터미널에 출력되는 STM32 로그가 그대로 저장된다.  
