@@ -1,269 +1,423 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "gaugewidget.h"
 
-#include <QMessageBox>
+#include "gaugewidget.h"
+#include "mymqtt.h"
+#include "drawmap.h"
+#include "drawcamera.h"
+
 #include <QDateTime>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QHBoxLayout>
+#include <QMessageBox>
+#include <QPlainTextEdit>
+
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QUrl>
+#include <QSslError>
+
+#include <QHash>
+#include <QImage>
+
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
+#include <QDir>
+#include <QCoreApplication>
 
 static QString nowHMS() {
     return QDateTime::currentDateTime().toString("HH:mm:ss");
 }
-
-static QString isoUtcNowZ() {
-    return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) + "Z";
-}
-
-static QString fileNameFromUrlOrPath(const QString& s) {
-    // url/path에서 파일명만 대충 추출
-    int slash = s.lastIndexOf('/');
-    if (slash >= 0 && slash + 1 < s.size()) return s.mid(slash + 1);
-    return s;
-}
-
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    this->setWindowTitle("MainWindow");
+    setWindowTitle("Qt GUI");
 
-    speedGauge = new GaugeWidget(ui->veloGraph);
-    speedGauge->setTitle("SPEED");
-    speedGauge->setUnit("%");
-    speedGauge->setRange(0, 100);
+    setupNetwork();
+    setupUiWidgets();
+    setupMqtt();
+    setupConnections();
 
-    speedGauge->setAnimated(true);
+    loadRosMapFromYaml("C:/Users/SSAFY/Downloads/my_map.yaml");
 
-    auto *l = new QHBoxLayout(ui->veloGraph);
-    l->setContentsMargins(8,8,8,8);
-    l->addWidget(speedGauge);
-
-    setupMqtt("127.0.0.1", 1883);
     setUiStateIdle();
 }
 
 MainWindow::~MainWindow()
 {
+    delete m_imageCache;
     delete ui;
 }
 
-
-//----- MQTT -----
-void MainWindow::setupMqtt(const QString& host, int port) {
-    mqtt = new QMqttClient(this);
-    mqtt->setHostname(host);
-    mqtt->setPort(port);
-    mqtt->setClientId("qt_gui");
-
-    connect(mqtt, &QMqttClient::connected,    this, &MainWindow::onMqttConnected);
-    connect(mqtt, &QMqttClient::disconnected, this, &MainWindow::onMqttDisconnected);
-    connect(mqtt, &QMqttClient::messageReceived, this, &MainWindow::onMqttMessage);
-
-    mqtt->connectToHost();
-}
-
-void MainWindow::onMqttConnected() {
-    appendLog("[MQTT] connected");
-    statusBar()->showMessage("MQTT connected");
-
-    // 기존 구독 유지(너가 쓰던 것) + 명세 토픽 추가
-    mqtt->subscribe(QMqttTopicFilter("rccar/state/#"), 0);
-
-    // MQTT 명세 기반 (robot/*)
-    mqtt->subscribe(QMqttTopicFilter("robot/motor_cmd"), 0);
-    mqtt->subscribe(QMqttTopicFilter("robot/camera_shot"), 0);
-
-    // map/pose는 이번엔 로그 과한듯해서 생략(요청대로)
-    // mqtt->subscribe(QMqttTopicFilter("robot/map_state"), 0);
-    // mqtt->subscribe(QMqttTopicFilter("robot/pose"), 0);
-}
-
-void MainWindow::onMqttDisconnected() {
-    appendLog("[MQTT] disconnected");
-    statusBar()->showMessage("MQTT disconnected");
-}
-
-void MainWindow::onMqttMessage(const QByteArray &msg, const QMqttTopicName &topic) {
-    const QString t = topic.name();
-
-    if (t == "robot/motor_cmd") {
-        handleMotorCmdJson(msg);
-        return;
-    }
-    if (t == "robot/camera_shot") {
-        handleCameraShotJson(msg);
-        return;
-    }
-
-    // 나머지는 기존처럼 raw 로그로 남김(구조 유지)
-    const QString line = QString("[%1] %2 : %3")
-                             .arg(nowHMS())
-                             .arg(t)
-                             .arg(QString::fromUtf8(msg));
-    appendLog(line);
-}
-
-void MainWindow::appendLog(const QString& line) {
-    ui->rccarLogs->appendPlainText(line);
-}
-
-
-//----- MQTT: JSON handlers -----
-void MainWindow::handleMotorCmdJson(const QByteArray &msg)
+void MainWindow::setupNetwork()
 {
-    QJsonParseError err {};
-    QJsonDocument doc = QJsonDocument::fromJson(msg, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        appendLog(QString("[%1] [motor_cmd] JSON parse error: %2")
-                      .arg(nowHMS())
-                      .arg(err.errorString()));
-        return;
-    }
-
-    const QJsonObject o = doc.object();
-    const int speed = o.value("speed").toInt(lastSpeed);
-    const int steer = o.value("steer").toInt(lastSteer);
-    const bool enable = o.value("enable").toBool(true);
-    const bool estop  = o.value("emergency_stop").toBool(false);
-    const QString mode = o.value("mode").toString("unknown");
-    const QString source = o.value("source").toString("unknown");
-
-    lastSpeed = speed;
-    lastSteer = steer;
-
-    // 계기판 업데이트
-    if (speedGauge)
-        speedGauge->setValue(speed);
-
-    appendLog(QString("[%1] [motor_cmd] src=%2 mode=%3 speed=%4 steer=%5 enable=%6 estop=%7")
-                  .arg(nowHMS())
-                  .arg(source)
-                  .arg(mode)
-                  .arg(speed)
-                  .arg(steer)
-                  .arg(enable ? "true" : "false")
-                  .arg(estop ? "true" : "false"));
+    m_net = new QNetworkAccessManager(this);
+    m_imageCache = new QHash<QString, QImage>();
 }
 
-void MainWindow::handleCameraShotJson(const QByteArray &msg)
+void MainWindow::setupUiWidgets()
 {
-    QJsonParseError err {};
-    QJsonDocument doc = QJsonDocument::fromJson(msg, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        appendLog(QString("[%1] [camera_shot] JSON parse error: %2")
-                      .arg(nowHMS())
-                      .arg(err.errorString()));
-        return;
-    }
+    // --- speed gauge ---
+    m_speedGauge = new GaugeWidget(ui->veloGraph);
+    m_speedGauge->setTitle("SPEED");
+    m_speedGauge->setUnit("%");
+    m_speedGauge->setRange(0, 100);
+    m_speedGauge->setAnimated(true);
 
-    const QJsonObject o = doc.object();
-    const QString shotId = o.value("shot_id").toString("unknown");
-    const double x = o.value("x").toDouble(0.0);
-    const double y = o.value("y").toDouble(0.0);
+    auto *l = new QHBoxLayout(ui->veloGraph);
+    l->setContentsMargins(8,8,8,8);
+    l->addWidget(m_speedGauge);
 
-    // 명세는 image_url로 오는데, 네 요청은 "사진 파일 이름" 출력
-    const QString imageUrl = o.value("image_url").toString("");
-    const QString fileName = fileNameFromUrlOrPath(imageUrl);
+    // --- map/camera helpers ---
+    m_map = new DrawMap(ui->mapImage, this);
+    m_camera = new DrawCamera(ui->cameraImage, this);
 
-    appendLog(QString("[%1] [camera_shot] shot_id=%2 file=%3 point=(%4,%5)")
-                  .arg(nowHMS())
-                  .arg(shotId)
-                  .arg(fileName.isEmpty() ? "-" : fileName)
-                  .arg(x, 0, 'f', 2)
-                  .arg(y, 0, 'f', 2));
+    // 라벨 기본 정렬
+    ui->mapImage->setAlignment(Qt::AlignCenter);
+    ui->cameraImage->setAlignment(Qt::AlignCenter);
 }
 
-
-//----- GUI -> MQTT publish -----
-void MainWindow::publishMotorCmd(int speed, int steer, bool enable, bool emergencyStop, const QString& mode)
+void MainWindow::setupMqtt()
 {
-    if (!mqtt || mqtt->state() != QMqttClient::Connected) {
-        appendLog(QString("[%1] [PUB] mqtt not connected").arg(nowHMS()));
-        return;
-    }
-
-    const int sp = qBound(0, speed, 100);
-    const int st = qBound(0, steer, 180);
-
-    const int flags = (enable ? 0x01 : 0x00) | (emergencyStop ? 0x02 : 0x00);
-
-    QJsonObject raw;
-    raw["speed_byte"] = sp;
-    raw["steer_byte"] = st;
-    raw["flags_byte"] = flags;
-
-    QJsonObject o;
-    o["source"] = "qt_gui";
-    o["speed"] = sp;
-    o["steer"] = st;
-    o["enable"] = enable;
-    o["emergency_stop"] = emergencyStop;
-    o["raw"] = raw;
-    o["mode"] = mode;
-    o["timestamp"] = isoUtcNowZ();
-
-    const QByteArray payload = QJsonDocument(o).toJson(QJsonDocument::Compact);
-    mqtt->publish(QMqttTopicName("robot/motor_cmd"), payload, 0, false);
-
-    appendLog(QString("[%1] [PUB] robot/motor_cmd speed=%2 steer=%3 enable=%4 estop=%5")
-                  .arg(nowHMS()).arg(sp).arg(st)
-                  .arg(enable ? "true" : "false")
-                  .arg(emergencyStop ? "true" : "false"));
+    m_mqtt = new MyMqtt(this);
 }
 
+void MainWindow::setupConnections()
+{
+    connect(m_mqtt, &MyMqtt::logLine, this, &MainWindow::appendLog);
+    connect(m_map,  &DrawMap::logLine, this, &MainWindow::appendLog);
 
-//----- Button -----
-void MainWindow::onStartClicked() {
-    appendLog("[UI] START clicked");
-    statusBar()->showMessage("START", 2000);
+    // MQTT -> UI 반영
+    connect(m_mqtt, &MyMqtt::motorCmdReceived, this, [this](const MotorCmd& cmd){
+        m_lastSpeed = cmd.speed;
+        m_lastSteer = cmd.steer;
+        if (m_speedGauge) m_speedGauge->setValue(cmd.speed);
+    });
+
+    connect(m_mqtt, &MyMqtt::mapStateReceived, this, [this](const MapMeta& meta){
+        m_currentMap = meta;
+        m_map->setMapMeta(meta);
+
+        if (meta.imageUrl.isEmpty()) {
+            appendLog(QString("[%1] [map] empty image_url").arg(nowHMS()));
+            return;
+        }
+
+        // 맵 이미지 다운로드 -> DrawMap에 base image로 내려주고 render
+        fetchImage(meta.imageUrl, [this, meta](const QImage& img){
+            if (img.isNull()) return;
+            m_map->setBaseMapImage(img);
+            m_map->render();
+            appendLog(QString("[%1] [map] loaded %2 size=%3x%4")
+                      .arg(nowHMS(), meta.imageUrl)
+                      .arg(img.width()).arg(img.height()));
+        });
+    });
+
+    connect(m_mqtt, &MyMqtt::cameraShotReceived, this, [this](const Shot& s){
+        m_map->addShot(s);
+        m_map->render();
+    });
+
+    // 맵 클릭 -> shot 선택 -> camera 이미지 다운로드 후 표시
+    connect(m_map, &DrawMap::shotClicked, this, [this](const Shot& s){
+        const QString toShow = !s.imageUrl.isEmpty() ? s.imageUrl : s.thumbUrl;
+        if (toShow.isEmpty()) {
+            appendLog(QString("[%1] [camera] empty url").arg(nowHMS()));
+            return;
+        }
+
+        appendLog(QString("[%1] [camera] downloading: %2").arg(nowHMS(), toShow));
+
+        fetchImage(toShow, [this, toShow](const QImage& img){
+            if (img.isNull()) {
+                appendLog(QString("[%1] [camera] decode fail: %2").arg(nowHMS(), toShow));
+                return;
+            }
+            m_camera->setImage(img);
+            appendLog(QString("[%1] [camera] show: %2").arg(nowHMS(), toShow));
+        });
+    });
+}
+
+void MainWindow::appendLog(const QString& line)
+{
+    if (ui->rccarLogs) ui->rccarLogs->appendPlainText(line);
+}
+
+void MainWindow::onStartClicked()
+{
+    statusBar()->showMessage("MQTT START", 1500);
     setUiStateRunning();
 
-    // 기본: enable on + estop 해제 + 현재(last) speed/steer로 “수동 명령”
-    publishMotorCmd(lastSpeed, lastSteer, true, false, "remote");
+    if (!m_mqtt)
+        return;
 
-    // (기존 pub도 유지하고 싶으면 남겨도 됨)
-    // mqtt->publish(QMqttTopicName("gui/cmd"), QByteArray("START"), 0, false);
+    if (m_mqtt->isConnected()) {
+        // 이미 연결이면 바로 publish
+        m_mqtt->publishMotorCmd(m_lastSpeed, m_lastSteer, true, false, "remote");
+        return;
+    }
+
+    // 연결 성공 직후 1회만 publish
+    connect(m_mqtt, &MyMqtt::connected, this, [this]() {
+        appendLog(QString("[%1] [UI] MQTT connected -> send enable").arg(nowHMS()));
+        m_mqtt->publishMotorCmd(m_lastSpeed, m_lastSteer, true, false, "remote");
+    }, Qt::SingleShotConnection);
+
+    // 이제서야 연결
+    m_mqtt->connectToBroker("10.252.52.29", 1883, "qt_gui");
 }
 
-void MainWindow::onStopClicked() {
-    appendLog("[UI] STOP clicked");
-    statusBar()->showMessage("STOP", 2000);
+
+void MainWindow::onStopClicked()
+{
+    statusBar()->showMessage("MQTT STOP", 1500);
     setUiStateStopped();
 
-    // STOP은 “emergency_stop=true”로 강제 정지
-    publishMotorCmd(0, lastSteer, true, true, "remote");
+    if (!m_mqtt) return;
 
-    // mqtt->publish(QMqttTopicName("gui/cmd"), QByteArray("STOP"), 0, false);
+    // 연결되어 있으면 먼저 e-stop 한번 보내기
+    if (m_mqtt->isConnected()) {
+        m_mqtt->publishMotorCmd(0, m_lastSteer, true, true, "remote");
+    }
+
+    // 끊기
+    m_mqtt->disconnectFromBroker();
 }
 
-void MainWindow::onFinishClicked() {
-    appendLog("[UI] FINISH clicked");
-    statusBar()->showMessage("FINISH", 2000);
 
-    // FINISH는 enable=false로 종료 느낌
-    publishMotorCmd(0, lastSteer, false, false, "remote");
+void MainWindow::onFinishClicked()
+{
+    statusBar()->showMessage("MQTT FINISH", 1500);
 
-    // mqtt->publish(QMqttTopicName("gui/cmd"), QByteArray("FINISH"), 0, false);
+    // enable off
+    m_mqtt->publishMotorCmd(0, m_lastSteer, false, false, "remote");
 }
 
-void MainWindow::setUiStateIdle() {
+void MainWindow::setUiStateIdle()
+{
     ui->startBtn->setEnabled(true);
     ui->stopBtn->setEnabled(false);
     ui->finishBtn->setEnabled(true);
 }
 
-void MainWindow::setUiStateRunning() {
+void MainWindow::setUiStateRunning()
+{
     ui->startBtn->setEnabled(false);
     ui->stopBtn->setEnabled(true);
     ui->finishBtn->setEnabled(true);
 }
 
-void MainWindow::setUiStateStopped() {
+void MainWindow::setUiStateStopped()
+{
     ui->startBtn->setEnabled(true);
     ui->stopBtn->setEnabled(false);
     ui->finishBtn->setEnabled(true);
 }
+
+void MainWindow::fetchImage(const QString& url, std::function<void(const QImage&)> onOk)
+{
+    if (url.isEmpty()) {
+        appendLog(QString("[%1] [http] empty url").arg(nowHMS()));
+        return;
+    }
+
+    // 캐시 hit
+    if (m_imageCache && m_imageCache->contains(url)) {
+        onOk((*m_imageCache)[url]);
+        return;
+    }
+
+    QUrl qurl(url);
+    if (!qurl.isValid()) {
+        appendLog(QString("[%1] [http] invalid url: %2").arg(nowHMS(), url));
+        return;
+    }
+
+    QNetworkRequest req(qurl);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "qt_gui");
+
+    // Qt6: RedirectPolicyAttribute 사용 (FollowRedirectsAttribute는 Qt5/상황에 따라 없을 수 있음)
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    QNetworkReply* reply = m_net->get(req);
+
+    connect(reply, &QNetworkReply::sslErrors, this, [this](const QList<QSslError>& errors){
+        for (const auto& e : errors) {
+            appendLog(QString("[%1] [http][ssl] %2").arg(nowHMS(), e.errorString()));
+        }
+    });
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url, onOk]() {
+        const auto err = reply->error();
+        const QByteArray data = reply->readAll();
+        reply->deleteLater();
+
+        if (err != QNetworkReply::NoError) {
+            appendLog(QString("[%1] [http] GET fail url=%2 err=%3").arg(nowHMS(), url).arg(int(err)));
+            return;
+        }
+
+        QImage img;
+        if (!img.loadFromData(data)) {
+            appendLog(QString("[%1] [http] decode fail url=%2 bytes=%3").arg(nowHMS(), url).arg(data.size()));
+            return;
+        }
+
+        if (m_imageCache) m_imageCache->insert(url, img);
+        onOk(img);
+    });
+}
+
+static QString stripQuotes(QString s)
+{
+    s = s.trimmed();
+    if (s.size() >= 2) {
+        if ((s.front() == '"'  && s.back() == '"') ||
+            (s.front() == '\'' && s.back() == '\'')) {
+            s = s.mid(1, s.size() - 2);
+        }
+    }
+    return s.trimmed();
+}
+
+static bool parseBracketList3(const QString& s, double& a, double& b, double& c)
+{
+    // origin: [x, y, yaw]
+    QString t = s.trimmed();
+    if (!t.startsWith('[') || !t.endsWith(']')) return false;
+    t = t.mid(1, t.size() - 2);
+
+    const auto parts = t.split(',', Qt::SkipEmptyParts);
+    if (parts.size() < 3) return false;
+
+    bool ok1=false, ok2=false, ok3=false;
+    a = parts[0].trimmed().toDouble(&ok1);
+    b = parts[1].trimmed().toDouble(&ok2);
+    c = parts[2].trimmed().toDouble(&ok3);
+    return ok1 && ok2 && ok3;
+}
+
+bool MainWindow::loadRosMapYamlInternal(const QString& yamlPath, MapMeta& outMeta, QImage& outImg)
+{
+    QFile f(yamlPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        appendLog(QString("[%1] [map] open fail: %2").arg(nowHMS(), yamlPath));
+        return false;
+    }
+
+    QFileInfo yfi(yamlPath);
+    const QString yamlDir = yfi.absolutePath();
+
+    // 기본값
+    QString imageRel;
+    double resolution = 0.05;
+    double ox=0.0, oy=0.0, oyaw=0.0;
+    int negate = 0;
+
+    QTextStream ts(&f);
+    while (!ts.atEnd()) {
+        QString line = ts.readLine();
+
+        // 주석 제거
+        const int hash = line.indexOf('#');
+        if (hash >= 0) line = line.left(hash);
+
+        line = line.trimmed();
+        if (line.isEmpty()) continue;
+
+        const int colon = line.indexOf(':');
+        if (colon < 0) continue;
+
+        const QString key = line.left(colon).trimmed();
+        QString val = line.mid(colon + 1).trimmed();
+        val = stripQuotes(val);
+
+        if (key == "image") {
+            imageRel = val;
+        } else if (key == "resolution") {
+            bool ok=false;
+            const double r = val.toDouble(&ok);
+            if (ok) resolution = r;
+        } else if (key == "origin") {
+            double a,b,c;
+            if (parseBracketList3(val, a,b,c)) {
+                ox=a; oy=b; oyaw=c;
+            }
+        } else if (key == "negate") {
+            bool ok=false;
+            const int n = val.toInt(&ok);
+            if (ok) negate = n;
+        }
+    }
+
+    if (imageRel.isEmpty()) {
+        appendLog(QString("[%1] [map] yaml has no image field").arg(nowHMS()));
+        return false;
+    }
+
+    // image 경로는 yaml 기준 상대경로가 대부분
+    const QString imagePath = QDir(yamlDir).absoluteFilePath(imageRel);
+
+    QImage img;
+    if (!img.load(imagePath)) {
+        appendLog(QString("[%1] [map] image load fail: %2").arg(nowHMS(), imagePath));
+        return false;
+    }
+
+    // ✅ “gray map”로 쓰기 위해 grayscale로 통일
+    img = img.convertToFormat(QImage::Format_Grayscale8);
+
+    // negate: 1이면 색 반전
+    if (negate == 1) {
+        img.invertPixels();
+    }
+
+    MapMeta meta;
+    meta.mapId = QFileInfo(yamlPath).baseName();
+    meta.widthCells = img.width();
+    meta.heightCells = img.height();
+    meta.resolution = resolution;
+    meta.originX = ox;
+    meta.originY = oy;
+    meta.originYaw = oyaw;
+
+    // 지금은 MQTT 안 쓰니까, imageUrl에는 “참고용”으로 로컬 경로를 넣어도 됨
+    meta.imageUrl = imagePath;
+    meta.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate) + "Z";
+
+    outMeta = meta;
+    outImg = img;
+    return true;
+}
+
+bool MainWindow::loadRosMapFromYaml(const QString& yamlPath)
+{
+    MapMeta meta;
+    QImage img;
+
+    if (!loadRosMapYamlInternal(yamlPath, meta, img)) {
+        return false;
+    }
+
+    m_currentMap = meta;
+    m_map->setMapMeta(meta);
+    m_map->setBaseMapImage(img);
+    m_map->render();
+
+    appendLog(QString("[%1] [map] loaded yaml=%2 img=%3 (%4x%5) res=%6 origin=(%7,%8,%9)")
+                  .arg(nowHMS(), yamlPath, meta.imageUrl)
+                  .arg(img.width()).arg(img.height())
+                  .arg(meta.resolution, 0, 'f', 3)
+                  .arg(meta.originX, 0, 'f', 3)
+                  .arg(meta.originY, 0, 'f', 3)
+                  .arg(meta.originYaw, 0, 'f', 3));
+    return true;
+}
+
