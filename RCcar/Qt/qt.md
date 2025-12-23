@@ -7,6 +7,13 @@ MQTT로 들어오는 **map_state / camera_shot / pose / motor_cmd**를 받아서
 - **속도 게이지 표시**
 를 하는 Qt Widgets 기반 GUI.
 
+<img src="./images/image_qt1.png" height="400">
+
+MQTT START를 누르면 MQTT 연결  
+CAMERA START를 누르면 카메라 이미지 촬영 시작  
+
+<br>
+
 ---
 
 ## 파일 의존성
