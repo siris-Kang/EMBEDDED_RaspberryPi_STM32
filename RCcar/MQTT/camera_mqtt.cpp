@@ -49,8 +49,10 @@ static fs::path expandUser(const std::string& p) {
     if (!p.empty() && p[0] == '~') {
         const char* home = std::getenv("HOME");
         if (!home) home = "/home/ubuntu";
-        if (p.size() == 1) return fs::path(home);
-        if (p[1] == '/') return fs::path(home) / p.substr(2);
+        if (p.size() == 1)
+            return fs::path(home);
+        if (p[1] == '/')
+            return fs::path(home) / p.substr(2);
     }
     return fs::path(p);
 }
@@ -63,7 +65,7 @@ static std::mt19937 rng{ std::random_device{}() };
 
 static std::string makeShotId(uint64_t id) {
     std::ostringstream oss;
-    oss << "shot_" << std::setw(4) << std::setfill('0') << id; // shot_0001
+    oss << "shot_" << std::setw(4) << std::setfill('0') << id;
     return oss.str();
 }
 
@@ -81,30 +83,36 @@ static std::string nowIsoUtcZ() {
     return buf;
 }
 
-// 간단 JSON 파서(의존성 없이): "action":"start"/"stop", "period_ms":1234 추출
 static std::optional<std::string> jsonGetString(const std::string& s, const std::string& key) {
-    // naive: "key" : "value"
     std::string pat = "\"" + key + "\"";
     auto kpos = s.find(pat);
-    if (kpos == std::string::npos) return std::nullopt;
+    if (kpos == std::string::npos)
+        return std::nullopt;
     auto colon = s.find(':', kpos + pat.size());
-    if (colon == std::string::npos) return std::nullopt;
+    if (colon == std::string::npos)
+        return std::nullopt;
     auto q1 = s.find('"', colon + 1);
-    if (q1 == std::string::npos) return std::nullopt;
+    if (q1 == std::string::npos)
+        return std::nullopt;
     auto q2 = s.find('"', q1 + 1);
-    if (q2 == std::string::npos) return std::nullopt;
+    if (q2 == std::string::npos)
+        return std::nullopt;
     return s.substr(q1 + 1, q2 - (q1 + 1));
 }
 static std::optional<int> jsonGetInt(const std::string& s, const std::string& key) {
     std::string pat = "\"" + key + "\"";
     auto kpos = s.find(pat);
-    if (kpos == std::string::npos) return std::nullopt;
+    if (kpos == std::string::npos)
+        return std::nullopt;
+
     auto colon = s.find(':', kpos + pat.size());
-    if (colon == std::string::npos) return std::nullopt;
+    if (colon == std::string::npos)
+        return std::nullopt;
 
     // skip spaces
     size_t i = colon + 1;
-    while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) i++;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r'))
+        i++;
 
     // read number
     bool neg = false;
@@ -112,25 +120,28 @@ static std::optional<int> jsonGetInt(const std::string& s, const std::string& ke
 
     size_t j = i;
     while (j < s.size() && (s[j] >= '0' && s[j] <= '9')) j++;
-    if (j == i) return std::nullopt;
+    if (j == i)
+        return std::nullopt;
 
     int v = std::stoi(s.substr(i, j - i));
     return neg ? -v : v;
 }
 
-// 내 IP(대충): hostname -I의 첫 IPv4 사용
 static std::string getMyIpBestEffort() {
     FILE* fp = popen("hostname -I 2>/dev/null", "r");
-    if (!fp) return "127.0.0.1";
+    if (!fp)
+        return "127.0.0.1";
+
     char buf[256]{0};
     std::fgets(buf, sizeof(buf), fp);
     pclose(fp);
     std::istringstream iss(buf);
     std::string ip;
     while (iss >> ip) {
-        // loopback 제외, IPv4만
-        if (ip.rfind("127.", 0) == 0) continue;
-        if (ip.find(':') != std::string::npos) continue;
+        if (ip.rfind("127.", 0) == 0)
+            continue;
+        if (ip.find(':') != std::string::npos)
+            continue;
         return ip;
     }
     return "127.0.0.1";
@@ -194,9 +205,6 @@ static void mqttPublishCameraShot(uint64_t shotNum, const std::string& imageUrl)
 
     std::string shotId = makeShotId(shotNum);
 
-    // (선택) 썸네일은 지금 없으니 image_url 그대로 넣거나 빈 문자열로
-    std::string thumbUrl = imageUrl; // TODO: 나중에 진짜 thumb 만들면 교체
-
     std::ostringstream oss;
     oss << "{"
         << "\"shot_id\":\"" << shotId << "\","
@@ -204,7 +212,6 @@ static void mqttPublishCameraShot(uint64_t shotNum, const std::string& imageUrl)
         << "\"y\":" << y << ","
         << "\"theta\":" << theta << ","
         << "\"image_url\":\"" << imageUrl << "\","
-        << "\"thumbnail_url\":\"" << thumbUrl << "\","
         << "\"timestamp\":\"" << nowIsoUtcZ() << "\""
         << "}";
 
@@ -234,19 +241,20 @@ static void cameraThreadMain() {
                 return g_exit.load() || g_cam_running.load();
             });
         }
-        if (g_exit.load()) break;
+        if (g_exit.load())
+            break;
 
         // start 들어왔음: 카메라 열기
         if (!opened) {
-            // 기본 0번 장치. 필요하면 /dev/video1 같은 걸로 바꿔도 됨.
+            // 기본 0번 장치
             opened = cap.open(0, cv::CAP_V4L2);
             if (!opened) {
                 std::cerr << "[CAM] open failed (device 0)\n";
-                // 조금 쉬었다가 재시도
+                // 재시도
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }
-            // 옵션: 해상도/포맷
+            // 해상도/포맷
             cap.set(cv::CAP_PROP_FRAME_WIDTH,  640);
             cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
             std::cerr << "[CAM] opened\n";
@@ -289,16 +297,15 @@ static void cameraThreadMain() {
                 });
             }
         }
-
-        // stop 들어왔으면 카메라 릴리즈(원하면 유지해도 됨)
+        // stop 들어왔으면 카메라 릴리즈
         if (opened) {
             cap.release();
             opened = false;
             std::cerr << "[CAM] released\n";
         }
     }
-
-    if (opened) cap.release();
+    if (opened)
+        cap.release();
 }
 
 // MQTT 콜백
