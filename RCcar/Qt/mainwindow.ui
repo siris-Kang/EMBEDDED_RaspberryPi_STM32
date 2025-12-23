@@ -6,166 +6,151 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>988</width>
-    <height>634</height>
+    <width>1031</width>
+    <height>736</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
-  </property>
-  <property name="styleSheet">
-   <string notr="true"/>
+   <string>Qt GUI</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QWidget" name="horizontalLayoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>20</y>
-      <width>921</width>
-      <height>561</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="screen">
-     <item>
-      <layout class="QGridLayout" name="leftLayout">
-       <item row="1" column="0">
-        <widget class="QPlainTextEdit" name="rccarLogs">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-         <property name="plainText">
-          <string>Logs</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="mapImage">
-         <property name="text">
-          <string>Map Image</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item>
-      <layout class="QGridLayout" name="rightLayout">
-       <item row="1" column="0">
-        <layout class="QHBoxLayout" name="rightDownLayout">
-         <item>
-          <widget class="QWidget" name="veloGraph" native="true"/>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="verticalLayout">
-           <item>
-            <widget class="QPushButton" name="startBtn">
-             <property name="text">
-              <string>START</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="stopBtn">
-             <property name="text">
-              <string>STOP</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="finishBtn">
-             <property name="text">
-              <string>FINISH</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-        </layout>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="cameraImage">
-         <property name="text">
-          <string>Camera Image</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-    </layout>
-   </widget>
-  </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>988</width>
-     <height>26</height>
-    </rect>
-   </property>
+   <layout class="QVBoxLayout" name="verticalLayout" stretch="0,1,0">
+    <item>
+     <layout class="QHBoxLayout" name="topBarLayout">
+      <item>
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>   MQTT</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="startBtn">
+        <property name="text">
+         <string>START</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="stopBtn">
+        <property name="text">
+         <string>STOP</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="finishBtn">
+        <property name="text">
+         <string>FINISH</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>CAMERA</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="cameraStartBtn">
+        <property name="text">
+         <string>START</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="cameraStopBtn">
+        <property name="text">
+         <string>STOP</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="midLayout" stretch="2,1">
+      <item>
+       <widget class="QLabel" name="mapImage">
+        <property name="minimumSize">
+         <size>
+          <width>640</width>
+          <height>420</height>
+         </size>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <property name="text">
+         <string>MAP</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="cameraImage">
+        <property name="minimumSize">
+         <size>
+          <width>360</width>
+          <height>420</height>
+         </size>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <property name="text">
+         <string>CAMERA</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="bottomLayout" stretch="0,1">
+      <item>
+       <widget class="QWidget" name="veloGraph" native="true">
+        <property name="minimumSize">
+         <size>
+          <width>220</width>
+          <height>220</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPlainTextEdit" name="rccarLogs">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="placeholderText">
+         <string>logs...</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
- <connections>
-  <connection>
-   <sender>startBtn</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>onStartClicked()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>928</x>
-     <y>385</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>955</x>
-     <y>381</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>stopBtn</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>onStopClicked()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>921</x>
-     <y>473</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>949</x>
-     <y>465</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>finishBtn</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>onFinishClicked()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>933</x>
-     <y>547</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>954</x>
-     <y>553</y>
-    </hint>
-   </hints>
-  </connection>
- </connections>
- <slots>
-  <slot>onStartClicked()</slot>
-  <slot>onStopClicked()</slot>
-  <slot>onFinishClicked()</slot>
- </slots>
+ <connections/>
 </ui>

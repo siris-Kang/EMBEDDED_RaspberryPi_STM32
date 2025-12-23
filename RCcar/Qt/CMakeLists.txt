@@ -1,21 +1,22 @@
 cmake_minimum_required(VERSION 3.19)
-project(qtRCcar LANGUAGES CXX)
+project(RCcar_thread LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Mqtt)
 
 qt_standard_project_setup()
 
-qt_add_executable(qtRCcar
+qt_add_executable(RCcar_thread
     WIN32 MACOSX_BUNDLE
     main.cpp
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
-    app_types.h drawcamera.h drawmap.h gaugewidget.h mainwindow.h mymqtt.h
-    drawcamera.cpp drawmap.cpp gaugewidget.cpp main.cpp mainwindow.cpp mymqtt.cpp
+    drawcamera.h drawmap.h gaugewidget.h mainwindow.h mymqtt.h workers.h
+    drawcamera.cpp drawmap.cpp gaugewidget.cpp mainwindow.cpp mymqtt.cpp workers.cpp
+    app_types.h
 )
 
-target_link_libraries(qtRCcar
+target_link_libraries(RCcar_thread
     PRIVATE
         Qt::Core
         Qt::Widgets
@@ -24,14 +25,14 @@ target_link_libraries(qtRCcar
 
 include(GNUInstallDirs)
 
-install(TARGETS qtRCcar
+install(TARGETS RCcar_thread
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 qt_generate_deploy_app_script(
-    TARGET qtRCcar
+    TARGET RCcar_thread
     OUTPUT_SCRIPT deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
 )

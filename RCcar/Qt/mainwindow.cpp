@@ -5,26 +5,19 @@
 #include "mymqtt.h"
 #include "drawmap.h"
 #include "drawcamera.h"
+#include "workers.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
-#include <QMessageBox>
 #include <QPlainTextEdit>
-
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QUrl>
-#include <QSslError>
-
-#include <QHash>
-#include <QImage>
-
+#include <QPushButton>
+#include <QThread>
+#include <QDir>
+#include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
-#include <QDir>
-#include <QCoreApplication>
+#include <QImage>
 
 static QString nowHMS() {
     return QDateTime::currentDateTime().toString("HH:mm:ss");
@@ -35,13 +28,15 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    setWindowTitle("Qt GUI");
+    ui->rccarLogs->setMaximumBlockCount(500);
+    setWindowTitle("VANGUARD-DT");
 
-    setupNetwork();
     setupUiWidgets();
     setupMqtt();
+    setupThreads();
     setupConnections();
 
+    // 로컬 YAML로 맵 테스트
     loadRosMapFromYaml("C:/Users/SSAFY/Downloads/my_map.yaml");
 
     setUiStateIdle();
@@ -49,14 +44,23 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    delete m_imageCache;
-    delete ui;
-}
+    // 로그 flush
+    if (m_logWorker) {
+        QMetaObject::invokeMethod(m_logWorker, "flush", Qt::BlockingQueuedConnection);
+    }
 
-void MainWindow::setupNetwork()
-{
-    m_net = new QNetworkAccessManager(this);
-    m_imageCache = new QHash<QString, QImage>();
+    auto stopThread = [](QThread* t){
+        if (!t) return;
+        t->quit();
+        t->wait(2000);
+    };
+
+    stopThread(m_mapThread);
+    stopThread(m_cameraThread);
+    stopThread(m_motorThread);
+    stopThread(m_logThread);
+
+    delete ui;
 }
 
 void MainWindow::setupUiWidgets()
@@ -76,9 +80,15 @@ void MainWindow::setupUiWidgets()
     m_map = new DrawMap(ui->mapImage, this);
     m_camera = new DrawCamera(ui->cameraImage, this);
 
-    // 라벨 기본 정렬
     ui->mapImage->setAlignment(Qt::AlignCenter);
     ui->cameraImage->setAlignment(Qt::AlignCenter);
+
+    // 버튼 연결
+    connect(ui->startBtn, &QPushButton::clicked, this, &MainWindow::onStartClicked);
+    connect(ui->cameraStartBtn, &QPushButton::clicked, this, &MainWindow::onCameraStartClicked);
+    connect(ui->cameraStopBtn, &QPushButton::clicked, this, &MainWindow::onCameraStopClicked);
+    connect(ui->stopBtn, &QPushButton::clicked, this, &MainWindow::onStopClicked);
+    connect(ui->finishBtn, &QPushButton::clicked, this, &MainWindow::onFinishClicked);
 }
 
 void MainWindow::setupMqtt()
@@ -86,67 +96,118 @@ void MainWindow::setupMqtt()
     m_mqtt = new MyMqtt(this);
 }
 
+void MainWindow::setupThreads()
+{
+    // threads
+    m_logThread = new QThread(this);
+    m_motorThread = new QThread(this);
+    m_cameraThread = new QThread(this);
+    m_mapThread = new QThread(this);
+
+    // workers (no parent; will be deleted when thread finishes)
+    m_logWorker = new LogWorker();
+    m_motorWorker = new MotorWorker();
+    m_cameraWorker = new CameraWorker();
+    m_mapWorker = new MapRenderWorker();
+
+    m_logWorker->moveToThread(m_logThread);
+    m_motorWorker->moveToThread(m_motorThread);
+    m_cameraWorker->moveToThread(m_cameraThread);
+    m_mapWorker->moveToThread(m_mapThread);
+
+    connect(m_logThread, &QThread::finished, m_logWorker, &QObject::deleteLater);
+    connect(m_motorThread, &QThread::finished, m_motorWorker, &QObject::deleteLater);
+    connect(m_cameraThread, &QThread::finished, m_cameraWorker, &QObject::deleteLater);
+    connect(m_mapThread, &QThread::finished, m_mapWorker, &QObject::deleteLater);
+
+    m_logThread->start();
+    m_motorThread->start();
+    m_cameraThread->start();
+    m_mapThread->start();
+
+    // 로그 파일 경로 설정
+    const QString logDir = QCoreApplication::applicationDirPath() + "/logs";
+    const QString logPath = logDir + "/qt_gui_" + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".txt";
+
+    QMetaObject::invokeMethod(m_logWorker, "setLogFile", Qt::QueuedConnection, Q_ARG(QString, logPath));
+}
+
 void MainWindow::setupConnections()
 {
-    connect(m_mqtt, &MyMqtt::logLine, this, &MainWindow::appendLog);
-    connect(m_map,  &DrawMap::logLine, this, &MainWindow::appendLog);
+    // --- log: UI + file ---
+    connect(this, &MainWindow::logToFile, m_logWorker, &LogWorker::appendLine, Qt::QueuedConnection);
+    connect(m_logWorker, &LogWorker::logLine, this, &MainWindow::appendLog);
 
-    // MQTT -> UI 반영
-    connect(m_mqtt, &MyMqtt::motorCmdReceived, this, [this](const MotorCmd& cmd){
-        m_lastSpeed = cmd.speed;
-        m_lastSteer = cmd.steer;
-        if (m_speedGauge) m_speedGauge->setValue(cmd.speed);
+    // mqtt log
+    connect(m_mqtt, &MyMqtt::logLine, this, &MainWindow::appendLog);
+
+    // map internal log
+    connect(m_map, &DrawMap::logLine, this, &MainWindow::appendLog);
+
+    // worker logs
+    connect(m_cameraWorker, &CameraWorker::logLine, this, &MainWindow::appendLog);
+    connect(m_mapWorker, &MapRenderWorker::logLine, this, &MainWindow::appendLog);
+
+    // --- motor thread ---
+    connect(m_mqtt, &MyMqtt::motorCmdReceived, m_motorWorker, &MotorWorker::onMotorCmd, Qt::QueuedConnection);
+    connect(m_motorWorker, &MotorWorker::speedChanged, this, [this](int sp){
+        m_lastSpeed = sp;
+        if (m_speedGauge) m_speedGauge->setValue(sp);
+    });
+    connect(m_motorWorker, &MotorWorker::steerChanged, this, [this](int st){
+        m_lastSteer = st;
     });
 
+    // --- map thread ---
     connect(m_mqtt, &MyMqtt::mapStateReceived, this, [this](const MapMeta& meta){
         m_currentMap = meta;
         m_map->setMapMeta(meta);
+        m_map->clearShots();
+        m_camera->setImage(QImage());
 
-        if (meta.imageUrl.isEmpty()) {
-            appendLog(QString("[%1] [map] empty image_url").arg(nowHMS()));
-            return;
-        }
-
-        // 맵 이미지 다운로드 -> DrawMap에 base image로 내려주고 render
-        fetchImage(meta.imageUrl, [this, meta](const QImage& img){
-            if (img.isNull()) return;
-            m_map->setBaseMapImage(img);
-            m_map->render();
-            appendLog(QString("[%1] [map] loaded %2 size=%3x%4")
-                      .arg(nowHMS(), meta.imageUrl)
-                      .arg(img.width()).arg(img.height()));
-        });
+        QMetaObject::invokeMethod(m_mapWorker, "onMapState", Qt::QueuedConnection, Q_ARG(MapMeta, meta));
     });
 
     connect(m_mqtt, &MyMqtt::cameraShotReceived, this, [this](const Shot& s){
+        // UI도 동일 순서로 shot을 저장해야 click idx가 맞음
         m_map->addShot(s);
-        m_map->render();
+
+        QMetaObject::invokeMethod(m_mapWorker, "onCameraShot", Qt::QueuedConnection, Q_ARG(Shot, s));
+        QMetaObject::invokeMethod(m_cameraWorker, "prefetchShotThumb", Qt::QueuedConnection, Q_ARG(Shot, s));
     });
 
-    // 맵 클릭 -> shot 선택 -> camera 이미지 다운로드 후 표시
+    connect(m_mqtt, &MyMqtt::poseReceived, this, [this](const Pose& p){
+        // mqtt pose도 mapWorker 렌더에 사용
+        QMetaObject::invokeMethod(m_mapWorker, "onPose", Qt::QueuedConnection, Q_ARG(Pose, p));
+
+        // 로컬 yaml 렌더(기본 모드)일 때도 보이도록(선택)
+        m_map->setPose(p);
+    });
+
+    connect(m_mapWorker, &MapRenderWorker::mapImageRendered, this,
+            [this](const QImage& rendered, const QVector<HitBox>& hitboxes){
+        m_map->setRenderedImage(rendered, hitboxes);
+    }, Qt::QueuedConnection);
+
+    // map 클릭 -> camera worker
     connect(m_map, &DrawMap::shotClicked, this, [this](const Shot& s){
-        const QString toShow = !s.imageUrl.isEmpty() ? s.imageUrl : s.thumbUrl;
-        if (toShow.isEmpty()) {
-            appendLog(QString("[%1] [camera] empty url").arg(nowHMS()));
-            return;
-        }
-
-        appendLog(QString("[%1] [camera] downloading: %2").arg(nowHMS(), toShow));
-
-        fetchImage(toShow, [this, toShow](const QImage& img){
-            if (img.isNull()) {
-                appendLog(QString("[%1] [camera] decode fail: %2").arg(nowHMS(), toShow));
-                return;
-            }
-            m_camera->setImage(img);
-            appendLog(QString("[%1] [camera] show: %2").arg(nowHMS(), toShow));
-        });
+        QMetaObject::invokeMethod(m_cameraWorker, "onShotClicked", Qt::QueuedConnection, Q_ARG(Shot, s));
     });
+
+    connect(m_cameraWorker, &CameraWorker::cameraReady, this, [this](const QImage& img){
+        m_camera->setImage(img);
+    }, Qt::QueuedConnection);
+
+    connect(m_mqtt, &MyMqtt::disconnected, this, [this](){
+        setUiStateStopped();        // cameraStart/Stop 둘 다 disable 포함된 상태
+    });
+
 }
 
 void MainWindow::appendLog(const QString& line)
 {
     if (ui->rccarLogs) ui->rccarLogs->appendPlainText(line);
+    emit logToFile(line);
 }
 
 void MainWindow::onStartClicked()
@@ -158,35 +219,33 @@ void MainWindow::onStartClicked()
         return;
 
     if (m_mqtt->isConnected()) {
-        // 이미 연결이면 바로 publish
         m_mqtt->publishMotorCmd(m_lastSpeed, m_lastSteer, true, false, "remote");
         return;
     }
 
-    // 연결 성공 직후 1회만 publish
     connect(m_mqtt, &MyMqtt::connected, this, [this]() {
         appendLog(QString("[%1] [UI] MQTT connected -> send enable").arg(nowHMS()));
         m_mqtt->publishMotorCmd(m_lastSpeed, m_lastSteer, true, false, "remote");
     }, Qt::SingleShotConnection);
 
-    // 이제서야 연결
-    m_mqtt->connectToBroker("10.252.52.29", 1883, "qt_gui");
+    // 연결
+    m_mqtt->connectToBroker("10.60.106.137", 1883, "qt_gui");
 }
-
 
 void MainWindow::onStopClicked()
 {
     statusBar()->showMessage("MQTT STOP", 1500);
+
+    if (m_mqtt && m_mqtt->isConnected()) {
+        m_mqtt->publishCameraCmd(false, 1000, "qt_gui");
+    }
+
     setUiStateStopped();
 
     if (!m_mqtt) return;
-
-    // 연결되어 있으면 먼저 e-stop 한번 보내기
     if (m_mqtt->isConnected()) {
         m_mqtt->publishMotorCmd(0, m_lastSteer, true, true, "remote");
     }
-
-    // 끊기
     m_mqtt->disconnectFromBroker();
 }
 
@@ -195,8 +254,49 @@ void MainWindow::onFinishClicked()
 {
     statusBar()->showMessage("MQTT FINISH", 1500);
 
-    // enable off
-    m_mqtt->publishMotorCmd(0, m_lastSteer, false, false, "remote");
+    if (m_mqtt) {
+        m_mqtt->publishMotorCmd(0, m_lastSteer, false, false, "remote");
+    }
+}
+
+void MainWindow::onCameraStartClicked()
+{
+    statusBar()->showMessage("CAMERA START", 1500);
+    if (!m_mqtt) return;
+
+    setUiStateCameraRunning();
+
+    auto doPub = [this]() {
+        m_mqtt->publishCameraCmd(true, 1000, "qt_gui");
+        appendLog(QString("[%1] [UI] send camera start").arg(nowHMS()));
+    };
+
+    // 연결돼있으면 바로 publish
+    if (m_mqtt->isConnected()) {
+        doPub();
+        return;
+    }
+
+    // 아직 연결 전이면: 연결되자마자 1회 publish
+    connect(m_mqtt, &MyMqtt::connected, this, [doPub]() { doPub(); }, Qt::SingleShotConnection);
+    m_mqtt->connectToBroker("10.252.52.29", 1883, "qt_gui");
+}
+
+void MainWindow::onCameraStopClicked()
+{
+    statusBar()->showMessage("CAMERA STOP", 1500);
+    if (!m_mqtt) return;
+
+    setUiStateCameraStopped();
+
+    // 연결돼있을 때만 publish (안돼있으면 UI만 바뀌고, 실제 stop 명령은 못 감)
+    if (!m_mqtt->isConnected()) {
+        appendLog(QString("[%1] [UI] camera stop requested but mqtt not connected").arg(nowHMS()));
+        return;
+    }
+
+    m_mqtt->publishCameraCmd(false, 1000, "qt_gui");
+    appendLog(QString("[%1] [UI] send camera stop").arg(nowHMS()));
 }
 
 void MainWindow::setUiStateIdle()
@@ -204,6 +304,9 @@ void MainWindow::setUiStateIdle()
     ui->startBtn->setEnabled(true);
     ui->stopBtn->setEnabled(false);
     ui->finishBtn->setEnabled(true);
+
+    ui->cameraStartBtn->setEnabled(false);
+    ui->cameraStopBtn->setEnabled(false);
 }
 
 void MainWindow::setUiStateRunning()
@@ -211,6 +314,21 @@ void MainWindow::setUiStateRunning()
     ui->startBtn->setEnabled(false);
     ui->stopBtn->setEnabled(true);
     ui->finishBtn->setEnabled(true);
+
+    ui->cameraStartBtn->setEnabled(true);
+    ui->cameraStopBtn->setEnabled(false);
+}
+
+void MainWindow::setUiStateCameraRunning()
+{
+    ui->cameraStartBtn->setEnabled(false);
+    ui->cameraStopBtn->setEnabled(true);
+}
+
+void MainWindow::setUiStateCameraStopped()
+{
+    ui->cameraStartBtn->setEnabled(true);
+    ui->cameraStopBtn->setEnabled(false);
 }
 
 void MainWindow::setUiStateStopped()
@@ -218,63 +336,13 @@ void MainWindow::setUiStateStopped()
     ui->startBtn->setEnabled(true);
     ui->stopBtn->setEnabled(false);
     ui->finishBtn->setEnabled(true);
+
+    ui->cameraStartBtn->setEnabled(false);
+    ui->cameraStopBtn->setEnabled(false);
 }
 
-void MainWindow::fetchImage(const QString& url, std::function<void(const QImage&)> onOk)
-{
-    if (url.isEmpty()) {
-        appendLog(QString("[%1] [http] empty url").arg(nowHMS()));
-        return;
-    }
 
-    // 캐시 hit
-    if (m_imageCache && m_imageCache->contains(url)) {
-        onOk((*m_imageCache)[url]);
-        return;
-    }
-
-    QUrl qurl(url);
-    if (!qurl.isValid()) {
-        appendLog(QString("[%1] [http] invalid url: %2").arg(nowHMS(), url));
-        return;
-    }
-
-    QNetworkRequest req(qurl);
-    req.setHeader(QNetworkRequest::UserAgentHeader, "qt_gui");
-
-    // Qt6: RedirectPolicyAttribute 사용 (FollowRedirectsAttribute는 Qt5/상황에 따라 없을 수 있음)
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
-
-    QNetworkReply* reply = m_net->get(req);
-
-    connect(reply, &QNetworkReply::sslErrors, this, [this](const QList<QSslError>& errors){
-        for (const auto& e : errors) {
-            appendLog(QString("[%1] [http][ssl] %2").arg(nowHMS(), e.errorString()));
-        }
-    });
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url, onOk]() {
-        const auto err = reply->error();
-        const QByteArray data = reply->readAll();
-        reply->deleteLater();
-
-        if (err != QNetworkReply::NoError) {
-            appendLog(QString("[%1] [http] GET fail url=%2 err=%3").arg(nowHMS(), url).arg(int(err)));
-            return;
-        }
-
-        QImage img;
-        if (!img.loadFromData(data)) {
-            appendLog(QString("[%1] [http] decode fail url=%2 bytes=%3").arg(nowHMS(), url).arg(data.size()));
-            return;
-        }
-
-        if (m_imageCache) m_imageCache->insert(url, img);
-        onOk(img);
-    });
-}
-
+// ---------------- YAML map loader (로컬 테스트용) ----------------
 static QString stripQuotes(QString s)
 {
     s = s.trimmed();
@@ -325,7 +393,6 @@ bool MainWindow::loadRosMapYamlInternal(const QString& yamlPath, MapMeta& outMet
     while (!ts.atEnd()) {
         QString line = ts.readLine();
 
-        // 주석 제거
         const int hash = line.indexOf('#');
         if (hash >= 0) line = line.left(hash);
 
@@ -362,7 +429,6 @@ bool MainWindow::loadRosMapYamlInternal(const QString& yamlPath, MapMeta& outMet
         return false;
     }
 
-    // image 경로는 yaml 기준 상대경로가 대부분
     const QString imagePath = QDir(yamlDir).absoluteFilePath(imageRel);
 
     QImage img;
@@ -371,10 +437,7 @@ bool MainWindow::loadRosMapYamlInternal(const QString& yamlPath, MapMeta& outMet
         return false;
     }
 
-    // ✅ “gray map”로 쓰기 위해 grayscale로 통일
     img = img.convertToFormat(QImage::Format_Grayscale8);
-
-    // negate: 1이면 색 반전
     if (negate == 1) {
         img.invertPixels();
     }
@@ -387,8 +450,6 @@ bool MainWindow::loadRosMapYamlInternal(const QString& yamlPath, MapMeta& outMet
     meta.originX = ox;
     meta.originY = oy;
     meta.originYaw = oyaw;
-
-    // 지금은 MQTT 안 쓰니까, imageUrl에는 “참고용”으로 로컬 경로를 넣어도 됨
     meta.imageUrl = imagePath;
     meta.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate) + "Z";
 
@@ -420,4 +481,3 @@ bool MainWindow::loadRosMapFromYaml(const QString& yamlPath)
                   .arg(meta.originYaw, 0, 'f', 3));
     return true;
 }
-

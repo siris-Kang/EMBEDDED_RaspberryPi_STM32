@@ -8,10 +8,14 @@
 #include <QDateTime>
 #include <QMetaObject>
 
+#include <cmath>
+
+
 DrawMap::DrawMap(QLabel *mapLabel, QObject *parent)
     : QObject(parent), m_label(mapLabel)
 {
     if (m_label) {
+        // 클릭을 여기서 받기 위해 eventFilter 설치
         m_label->installEventFilter(this);
         m_label->setAlignment(Qt::AlignCenter);
     }
@@ -25,11 +29,13 @@ void DrawMap::setMapMeta(const MapMeta& meta)
 void DrawMap::setBaseMapImage(const QImage& img)
 {
     m_baseMapImage = img;
+    m_useExternalRendered = false; // 기본 모드로 복귀
 }
 
 void DrawMap::addShot(const Shot& shot)
 {
     m_shots.push_back(shot);
+    requestUpdate();
 }
 
 void DrawMap::clearShots()
@@ -38,6 +44,17 @@ void DrawMap::clearShots()
     m_hitboxes.clear();
 }
 
+void DrawMap::setPose(const Pose& pose)
+{
+    m_pose = pose;
+    m_hasPose = true;
+    requestUpdate();
+}
+
+void DrawMap::clearPose()
+{
+    m_hasPose = false;
+}
 
 QString DrawMap::nowHMS()
 {
@@ -46,8 +63,10 @@ QString DrawMap::nowHMS()
 
 QPoint DrawMap::worldToPixel(double x, double y) const
 {
-    if (m_currentMap.resolution <= 0.0) return QPoint(-1, -1);
-    if (m_baseMapImage.isNull()) return QPoint(-1, -1);
+    if (m_currentMap.resolution <= 0.0)
+        return QPoint(-1, -1);
+    if (m_baseMapImage.isNull())
+        return QPoint(-1, -1);
 
     // 1) 월드(m) -> 셀(cell)
     const double cx = (x - m_currentMap.originX) / m_currentMap.resolution;
@@ -70,48 +89,110 @@ QPoint DrawMap::worldToPixel(double x, double y) const
     return QPoint(px, py);
 }
 
+void DrawMap::requestUpdate()
+{
+    if (m_updatePending) return;
+    m_updatePending = true;
+
+    QTimer::singleShot(0, this, [this](){
+        m_updatePending = false;
+
+        if (m_useExternalRendered && !m_lastRendered.isNull())
+            updateLabelPixmapFromImage(m_lastRendered);
+        else
+            render();
+    });
+}
+
+
+void DrawMap::updateLabelPixmapFromImage(const QImage& img)
+{
+    if (!m_label) return;
+    if (img.isNull()) return;
+
+    m_label->setPixmap(QPixmap::fromImage(img).scaled(
+        m_label->size(), Qt::KeepAspectRatio, Qt::FastTransformation));
+}
+
 void DrawMap::render()
 {
-    if (!m_label)
+    if (!m_label) return;
+    if (m_baseMapImage.isNull()) return;
+
+    // 외부 렌더 모드에서는 내부 렌더를 호출하지 않음
+    if (m_useExternalRendered && !m_lastRendered.isNull()) {
+        updateLabelPixmapFromImage(m_lastRendered);
         return;
-    if (m_baseMapImage.isNull())
-        return;
+    }
 
     QImage draw = m_baseMapImage.convertToFormat(QImage::Format_ARGB32);
     QPainter p(&draw);
     p.setRenderHint(QPainter::Antialiasing, true);
+    p.fillRect(draw.rect(), QColor(0, 0, 0, 55));
 
     m_hitboxes.clear();
 
-    const int r = 4;
+    const int r = 1;
 
+    // shot marker
     p.setPen(Qt::NoPen);
     p.setBrush(QColor(255, 0, 0, 255));
 
     for (int i = 0; i < m_shots.size(); ++i) {
         const Shot& s = m_shots[i];
 
-        QPoint pt = worldToPixel(s.x, s.y);   // 기존 변환 함수 그대로 사용
+        QPoint pt = worldToPixel(s.x, s.y);
         if (pt.x() < 0 || pt.y() < 0 || pt.x() >= draw.width() || pt.y() >= draw.height())
             continue;
 
         QRect rc(pt.x() - r, pt.y() - r, 2*r, 2*r);
         p.drawEllipse(rc);
 
-        // hit 판정용 hitbox: "현재 화면에 그려진 것만" 저장
-        m_hitboxes.push_back({rc, i});
+        m_hitboxes.push_back(HitBox{rc, i});
     }
 
-    // QLabel에 표시
-    m_label->setPixmap(QPixmap::fromImage(draw).scaled(
-        m_label->size(), Qt::KeepAspectRatio, Qt::FastTransformation));
+    // robot pose marker (optional)
+    if (m_hasPose) {
+        QPoint pt = worldToPixel(m_pose.x, m_pose.y);
+        if (pt.x() >= 0 && pt.y() >= 0 && pt.x() < draw.width() && pt.y() < draw.height()) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 200, 255, 220));
+            p.drawEllipse(QRect(pt.x()-5, pt.y()-5, 10, 10));
+
+            // heading line
+            p.setPen(QPen(QColor(0, 200, 255, 220), 2));
+            const double len = 18.0;
+            const double dx = len * std::cos(-m_pose.theta); // y flip 고려
+            const double dy = len * std::sin(-m_pose.theta);
+            p.drawLine(QPointF(pt), QPointF(pt.x() + dx, pt.y() + dy));
+        }
+    }
+
+    updateLabelPixmapFromImage(draw);
+}
+
+void DrawMap::setRenderedImage(const QImage& rendered,
+                              const QVector<HitBox>& hitboxes)
+{
+    if (rendered.isNull()) return;
+
+    m_useExternalRendered = true;
+    m_lastRendered = rendered;
+
+    // 클릭 좌표 변환은 "원본 이미지 크기"가 필요하므로 baseMapImage도 동일 크기로 둔다.
+    m_baseMapImage = rendered;
+    m_hitboxes = hitboxes;
+
+    updateLabelPixmapFromImage(m_lastRendered);
+
+    requestUpdate();;
 }
 
 bool DrawMap::labelPosToImagePos(const QPoint& labelPos, QPoint& outImgPos) const
 {
     if (!m_label) return false;
 
-    const QPixmap pm = m_label->pixmap(); // Qt6: 값 복사
+    const QPixmap pm = m_label->pixmap();
     if (pm.isNull() || m_baseMapImage.isNull()) return false;
 
     const QSize lbl = m_label->size();
@@ -122,12 +203,10 @@ bool DrawMap::labelPosToImagePos(const QPoint& labelPos, QPoint& outImgPos) cons
     int offsetX = 0;
     int offsetY = 0;
 
-    // 가로 정렬
     if (al & Qt::AlignHCenter) offsetX = (lbl.width() - pmSize.width()) / 2;
     else if (al & Qt::AlignRight) offsetX = (lbl.width() - pmSize.width());
     else offsetX = 0;
 
-    // 세로 정렬
     if (al & Qt::AlignVCenter) offsetY = (lbl.height() - pmSize.height()) / 2;
     else if (al & Qt::AlignBottom) offsetY = (lbl.height() - pmSize.height());
     else offsetY = 0;
@@ -148,7 +227,7 @@ bool DrawMap::labelPosToImagePos(const QPoint& labelPos, QPoint& outImgPos) cons
 int DrawMap::findHitMarkerIndex(const QPoint& imgPos) const
 {
     for (const auto& hb : m_hitboxes) {
-        if (hb.first.contains(imgPos)) return hb.second;
+        if (hb.rect.contains(imgPos)) return hb.shotIndex;
     }
     return -1;
 }
@@ -156,8 +235,16 @@ int DrawMap::findHitMarkerIndex(const QPoint& imgPos) const
 bool DrawMap::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj == m_label && event->type() == QEvent::Resize) {
-        // 레이아웃/리사이즈 직후에 다시 렌더(Queued로 안전하게)
-        QMetaObject::invokeMethod(this, [this]() { this->render(); }, Qt::QueuedConnection);
+        // 리사이즈 직후 재표시: 
+        // - 기본 모드: render()
+        // - 외부 렌더 모드: 마지막 이미지 스케일만
+        QMetaObject::invokeMethod(this, [this]() {
+            if (m_useExternalRendered && !m_lastRendered.isNull()) {
+                updateLabelPixmapFromImage(m_lastRendered);
+            } else {
+                this->render();
+            }
+        }, Qt::QueuedConnection);
         return false;
     }
 
@@ -188,6 +275,6 @@ bool DrawMap::eventFilter(QObject *obj, QEvent *event)
         }
         return true;
     }
+
     return QObject::eventFilter(obj, event);
 }
-

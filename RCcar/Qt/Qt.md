@@ -1,1 +1,0 @@
-<img src="./images/image_qt_gui.png" height="400">  

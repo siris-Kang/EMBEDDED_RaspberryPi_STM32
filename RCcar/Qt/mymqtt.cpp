@@ -61,6 +61,7 @@ void MyMqtt::subscribeDefault()
     m_client->subscribe(QMqttTopicFilter("robot/map_state"), 0);
     m_client->subscribe(QMqttTopicFilter("robot/camera_shot"), 0);
     m_client->subscribe(QMqttTopicFilter("robot/motor_cmd"), 0);
+    m_client->subscribe(QMqttTopicFilter("robot/pose"), 0);
 
     // 이전에 쓰던 토픽 유지하고 싶으면 추가
     m_client->subscribe(QMqttTopicFilter("rccar/state/#"), 0);
@@ -88,6 +89,7 @@ void MyMqtt::onMessage(const QByteArray &msg, const QMqttTopicName &topic)
     if (t == "robot/motor_cmd") { handleMotorCmdJson(msg); return; }
     if (t == "robot/map_state") { handleMapStateJson(msg); return; }
     if (t == "robot/camera_shot") { handleCameraShotJson(msg); return; }
+    if (t == "robot/pose") { handlePoseJson(msg); return; }
 
     // 그 외는 raw로 로그만 남김 (디버깅용)
     emit logLine(QString("[%1] %2 : %3").arg(nowHMS(), t, QString::fromUtf8(msg)));
@@ -186,6 +188,7 @@ void MyMqtt::handleCameraShotJson(const QByteArray &msg)
 
     Shot s;
     s.shotId   = o.value("shot_id").toString("unknown");
+    s.mapId    = o.value("map_id").toString("");
     s.x        = o.value("x").toDouble(0.0);
     s.y        = o.value("y").toDouble(0.0);
     s.theta    = o.value("theta").toDouble(0.0);
@@ -195,12 +198,44 @@ void MyMqtt::handleCameraShotJson(const QByteArray &msg)
 
     emit cameraShotReceived(s);
 
+    const QString best = !s.imageUrl.isEmpty() ? s.imageUrl : s.thumbUrl;
     emit logLine(QString("[%1] [camera_shot] map_id=%2 shot_id=%3 (x,y)=(%4,%5) img=%6")
                  .arg(nowHMS(),
+                      s.mapId,
                       s.shotId,
                       QString::number(s.x, 'f', 2),
                       QString::number(s.y, 'f', 2),
-                      !s.imageUrl.isEmpty() ? s.imageUrl : s.thumbUrl));
+                      best));
+}
+
+void MyMqtt::handlePoseJson(const QByteArray &msg)
+{
+    QJsonParseError err {};
+    const QJsonDocument doc = QJsonDocument::fromJson(msg, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        emit logLine(QString("[%1] [pose] JSON parse error: %2")
+                     .arg(nowHMS(), err.errorString()));
+        return;
+    }
+
+    const QJsonObject o = doc.object();
+
+    Pose p;
+    p.mapId = o.value("map_id").toString("");
+    p.x = o.value("x").toDouble(0.0);
+    p.y = o.value("y").toDouble(0.0);
+    p.theta = o.value("theta").toDouble(0.0);
+    p.frameId = o.value("frame_id").toString("map");
+    p.timestamp = o.value("timestamp").toString("");
+
+    emit poseReceived(p);
+
+    emit logLine(QString("[%1] [pose] map_id=%2 (x,y,th)=(%3,%4,%5)")
+                 .arg(nowHMS(),
+                      p.mapId,
+                      QString::number(p.x, 'f', 2),
+                      QString::number(p.y, 'f', 2),
+                      QString::number(p.theta, 'f', 2)));
 }
 
 void MyMqtt::publishMotorCmd(int speed, int steer, bool enable, bool emergencyStop,
@@ -241,4 +276,23 @@ void MyMqtt::publishMotorCmd(int speed, int steer, bool enable, bool emergencySt
                       QString::number(st),
                       enable ? "true" : "false",
                       emergencyStop ? "true" : "false"));
+}
+
+void MyMqtt::publishCameraCmd(bool start, int periodMs, const QString& source)
+{
+    if (!m_client || m_client->state() != QMqttClient::Connected) return;
+
+    QJsonObject o;
+    o["source"] = source;
+    o["action"] = start ? "start" : "stop";
+    if (start) o["period_ms"] = clampInt(periodMs, 100, 60000);
+    o["timestamp"] = isoUtcNowZ();
+
+    const QByteArray payload = QJsonDocument(o).toJson(QJsonDocument::Compact);
+    m_client->publish(QMqttTopicName("robot/camera_cmd"), payload, 0, false);
+
+    emit logLine(QString("[%1] [PUB] robot/camera_cmd action=%2 period_ms=%3")
+                     .arg(nowHMS(),
+                          start ? "start" : "stop",
+                          QString::number(periodMs)));
 }
