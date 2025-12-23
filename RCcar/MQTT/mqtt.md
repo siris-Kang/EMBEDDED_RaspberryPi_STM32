@@ -99,18 +99,49 @@ ros2 run ros_map_mqtt_bridge map_mqtt_bridge \
 
 
 ## motorMQTT
-> Raspberry pi와 USB 웹캠 연결
+> ROS에서 나온 주행 명령을 1) MQTT로 GUI에 뿌리고 2) UART로 STM32에 동시에 보내기
 
-motor 어케 움직여야할지 구독해서 GUI로도 보내고 STM UART로도 보내는 부분 만들어야하거든
+
 ### 폴더 구조
 ```
-
+ros_motor_uart_bridge/
+  package.xml
+  CMakeLists.txt
+  include/
+    utils.h
+    mqtt_pub.h
+    uart_packet.h
+    uart_port.h
+    motor_bridge_node.h
+  src/
+    utils.cpp
+    mqtt_pub.cpp
+    uart_port.cpp
+    motor_bridge_node.cpp
+    main.cpp
+    auto_test.cpp
 ```
 
 ### CMake 빌드
 ```
+sudo apt update
+sudo apt install -y libmosquitto-dev
 
+cd ~/ros2_ws/src
+# ros_motor_uart_bridge 폴더를 여기 넣고
+cd ~/ros2_ws
+colcon build --packages-select ros_motor_uart_bridge
+source install/setup.bash
 ```
 
-
-
+### 실행
+```
+ros2 run ros_motor_uart_bridge motor_bridge_node \
+  --ros-args \
+  -p uart_device:=/dev/ttyACM0 \
+  -p mqtt_host:=127.0.0.1 \
+  -p mqtt_port:=1883 \
+  -p cmd_vel_topic:=/cmd_vel \
+  -p speed_gain:=80.0 \
+  -p steer_gain:=60.0
+```
