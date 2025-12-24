@@ -229,7 +229,7 @@ void MainWindow::onStartClicked()
     }, Qt::SingleShotConnection);
 
     // 연결
-    m_mqtt->connectToBroker("10.60.106.137", 1883, "qt_gui");
+    m_mqtt->connectToBroker("10.38.205.160", 1883, "qt_gui");
 }
 
 void MainWindow::onStopClicked()

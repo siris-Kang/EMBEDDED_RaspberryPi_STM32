@@ -24,13 +24,48 @@ DrawMap::DrawMap(QLabel *mapLabel, QObject *parent)
 void DrawMap::setMapMeta(const MapMeta& meta)
 {
     m_currentMap = meta;
+
+    // base 이미지 크기 (있으면 같이 찍기)
+    const int imgW = m_baseMapImage.isNull() ? -1 : m_baseMapImage.width();
+    const int imgH = m_baseMapImage.isNull() ? -1 : m_baseMapImage.height();
+
+    // 표시 범위 계산 (cells가 0이면 이미지 크기를 fallback으로 사용)
+    const double gridW = (m_currentMap.widthCells  > 0) ? m_currentMap.widthCells  : imgW;
+    const double gridH = (m_currentMap.heightCells > 0) ? m_currentMap.heightCells : imgH;
+
+    const double minX = m_currentMap.originX;
+    const double minY = m_currentMap.originY;
+    const double maxX = minX + gridW * m_currentMap.resolution;
+    const double maxY = minY + gridH * m_currentMap.resolution;
+
+    emit logLine(QString("[%1] [map_meta] origin=(%2,%3) res=%4 cells=%5x%6 img=%7x%8 rangeX=[%9,%10] rangeY=[%11,%12]")
+                     .arg(nowHMS())
+                     .arg(m_currentMap.originX, 0, 'f', 3)
+                     .arg(m_currentMap.originY, 0, 'f', 3)
+                     .arg(m_currentMap.resolution, 0, 'f', 4)
+                     .arg(m_currentMap.widthCells)
+                     .arg(m_currentMap.heightCells)
+                     .arg(imgW).arg(imgH)
+                     .arg(minX, 0, 'f', 3)
+                     .arg(maxX, 0, 'f', 3)
+                     .arg(minY, 0, 'f', 3)
+                     .arg(maxY, 0, 'f', 3));
+
+    requestUpdate(); // 메타 바뀌면 바로 다시 그리기(추천)
 }
 
 void DrawMap::setBaseMapImage(const QImage& img)
 {
     m_baseMapImage = img;
     m_useExternalRendered = false; // 기본 모드로 복귀
+
+    emit logLine(QString("[%1] [map_img] base image set: %2x%3")
+                     .arg(nowHMS())
+                     .arg(img.width()).arg(img.height()));
+
+    requestUpdate();
 }
+
 
 void DrawMap::addShot(const Shot& shot)
 {
@@ -117,15 +152,20 @@ void DrawMap::updateLabelPixmapFromImage(const QImage& img)
 void DrawMap::render()
 {
     if (!m_label) return;
-    if (m_baseMapImage.isNull()) return;
 
-    // 외부 렌더 모드에서는 내부 렌더를 호출하지 않음
+    // ✅ 베이스 이미지를 선택한다.
+    // - 외부 렌더 모드이면 m_lastRendered를 베이스로
+    // - 아니면 m_baseMapImage를 베이스로
+    QImage base;
     if (m_useExternalRendered && !m_lastRendered.isNull()) {
-        updateLabelPixmapFromImage(m_lastRendered);
-        return;
+        base = m_lastRendered;
+    } else {
+        base = m_baseMapImage;
     }
 
-    QImage draw = m_baseMapImage.convertToFormat(QImage::Format_ARGB32);
+    if (base.isNull()) return;
+
+    QImage draw = base.convertToFormat(QImage::Format_ARGB32);
     QPainter p(&draw);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.fillRect(draw.rect(), QColor(0, 0, 0, 55));
@@ -172,21 +212,20 @@ void DrawMap::render()
 }
 
 void DrawMap::setRenderedImage(const QImage& rendered,
-                              const QVector<HitBox>& hitboxes)
+                               const QVector<HitBox>& hitboxes)
 {
     if (rendered.isNull()) return;
 
     m_useExternalRendered = true;
     m_lastRendered = rendered;
 
-    // 클릭 좌표 변환은 "원본 이미지 크기"가 필요하므로 baseMapImage도 동일 크기로 둔다.
     m_baseMapImage = rendered;
-    m_hitboxes = hitboxes;
 
-    updateLabelPixmapFromImage(m_lastRendered);
+    Q_UNUSED(hitboxes);
 
-    requestUpdate();;
+    requestUpdate();
 }
+
 
 bool DrawMap::labelPosToImagePos(const QPoint& labelPos, QPoint& outImgPos) const
 {
