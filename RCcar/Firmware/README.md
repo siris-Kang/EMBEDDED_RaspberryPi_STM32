@@ -140,11 +140,11 @@ USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신
 동작 순서:
 
 1. **타임아웃 체크 (500ms)**
-   - `now - last_cmd_tick > 500` 이면:
+   - `now - last_cmd_tick > 1s` 이면:
      - `Motor_SetSpeedPercent(0);` (정지)  
      - `Servo_SetSteerPercent(0);` (직진)  
      - 리턴
-   - → 0.5초 동안 명령이 없으면 자동으로 차를 멈춘다.
+   - → 1초 동안 명령이 없으면 자동으로 차를 멈춘다.
 
 2. **enable 플래그 확인**
    - `if ((g_cmd.flags & 0x01) == 0)` 이면:
@@ -160,46 +160,4 @@ USART2(UART2)를 활용해 **라즈베리파이 ↔ STM32** 간 양방향 통신
    - `Motor_SetSpeedPercent(g_cmd.speed);`
    - `Servo_SetSteerPercent(g_cmd.steer);`
 
-5. **명령 로그 출력 ([CMD])**
-   - `g_cmd.seq`가 이전에 처리한 `last_logged_seq`와 다를 때만:
-   - `[CMD] seq=... speed=... steer=... flags=...` 로그 출력
-   - → 같은 명령이 루프마다 반복 출력되는 것을 방지.
-
 ---
-
-<br>
-<br>
-
-# Raspberry-pi
-라즈베리파이와 SMT보드의 통신을 위해,  
-라즈베리파이에서 UART 프로그램을 작성 후 빌드한다.  
-
-```
-./UART/
-      ├─ main.cpp
-      ├─ uart.cpp
-      └─ uart.hpp
-```
-
-단, main.cpp의 `dev = "/dev/ttyACM0"` 의 시리얼 포트를 꼭 수정하도록 한다.  
-
-### Build
-```
-g++ -std=c++17 main.cpp uart.cpp -o uart
-```
-
-### 실행
-```
-./uart
-```
-프로그램을 실행하면 라즈베리파이에서 STM32 보드로 패킷을 전송하고 받을 수 있다.  
-`Ex) 20 0 1`
-- speed (uint8_t)
-- steer (uint8_t)
-- flags (uint8_t, bit0: enable, bit1: emergency stop)  
-
-
-STM32 보드는 수신한 패킷을 그대로 재전송(echo)하여, 패킷이 정상적으로 전송·수신되고 있는지 확인할 수 있다.  
-
-logs/YYMMDD_HHMM.txt 형식의 파일로  
-터미널에 출력되는 STM32 로그가 그대로 저장된다.  
