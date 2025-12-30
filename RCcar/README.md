@@ -20,6 +20,9 @@ ROS 기반 SLAM/Planner가 만들어낸 **주행/지도 결과**를 받아,
 (Motor/Servo) (Map/Camera/Logs/Gauge)
 ```
 
+> Overview
+<img src="./RCcar_overview.png">
+
 
 ### 폴더별 역할 요약
 - `Firmware/` : STM32 NUCLEO-F103RB(CubeIDE) 펌웨어. 모터/서보 제어 + UART 패킷 수신.
@@ -39,7 +42,7 @@ ROS 기반 SLAM/Planner가 만들어낸 **주행/지도 결과**를 받아,
 - UART 패킷 기반으로 명령을 안정적으로 수신/처리
 - enable / emergency stop 등 제어 플래그를 포함한 안전한 동작 흐름 구성
 
-### 2) MQTT 통신 및 Bridge 구성
+### 2) MQTT 통신
 - GUI ↔ 시스템 사이 통신을 MQTT 기반으로 설계/구현
 - 카메라/맵 데이터는 **이미지 자체를 MQTT에 싣지 않고**, HTTP 서빙 + MQTT 메타(Url 등) 방식으로 경량화
 - ROS에서 나온 결과값을 받아서
@@ -47,7 +50,7 @@ ROS 기반 SLAM/Planner가 만들어낸 **주행/지도 결과**를 받아,
   - 동시에 **GUI로 MQTT publish**
   형태로 동기화된 제어/모니터링 파이프라인 구축
 
-### 3) QT GUI 개발
+### 3) QT GUI
 - MQTT 구독 기반의 통합 대시보드 구현
   - Map Viewer(맵 + shot/pose 오버레이)
   - Camera Viewer(HTTP 이미지 로드)
